@@ -1,0 +1,46 @@
+{
+  "expo": {
+    "name": "UberClone Conductor",
+    "slug": "uberclone-conductor",
+    "version": "1.0.0",
+    "scheme": "uberclone-conductor",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "plugins": [
+      "expo-router",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Usamos tu ubicación para mostrarte en el mapa y recibir solicitudes mientras estás disponible."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Selecciona las fotos de perfil, vehículo y documentos para el registro.",
+          "cameraPermission": "Toma las fotos necesarias para el registro del conductor."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "com.jesiddev.ubercloneconductor"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}
