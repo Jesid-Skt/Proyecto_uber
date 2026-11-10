@@ -1,0 +1,36 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { envSchema } from './env.js';
+
+const validDevelopmentEnv = {
+  NODE_ENV: 'development',
+  PORT: '4000',
+  MONGODB_URI: 'mongodb://localhost:27017/uber_clone',
+  JWT_SECRET: 'j'.repeat(32),
+  TRIP_REQUEST_API_KEY: '',
+  ORS_API_KEY: '',
+  MERCADO_PAGO_ACCESS_TOKEN: '',
+  MERCADO_PAGO_WEBHOOK_SECRET: '',
+  BACKEND_PUBLIC_URL: '',
+};
+
+test('allows blank optional provider variables when integrations are not enabled', () => {
+  const parsed = envSchema.safeParse(validDevelopmentEnv);
+  assert.equal(parsed.success, true);
+});
+
+test('requires Mercado Pago webhook credentials and a public backend URL together', () => {
+  const missingWebhook = envSchema.safeParse({
+    ...validDevelopmentEnv,
+    MERCADO_PAGO_ACCESS_TOKEN: 'TEST-access-token',
+  });
+  assert.equal(missingWebhook.success, false);
+
+  const configured = envSchema.safeParse({
+    ...validDevelopmentEnv,
+    MERCADO_PAGO_ACCESS_TOKEN: 'TEST-access-token',
+    MERCADO_PAGO_WEBHOOK_SECRET: 'w'.repeat(32),
+    BACKEND_PUBLIC_URL: 'https://api.example.test',
+  });
+  assert.equal(configured.success, true);
+});
