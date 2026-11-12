@@ -97,3 +97,63 @@
 - Archivos y commit: `backend/src/routes/trips.ts`, `backend/src/services/mercado-pago.ts`, `backend/src/services/mercado-pago.test.ts`, `frontend/src/services/api.ts`, `frontend/src/context/DriverContext.tsx`, `frontend/src/screens/features/TripPaymentScreens.tsx`, `README.md`, `docs/AI_LOG.md`, `docs/AI_LOG.pdf` — cambios sin commit; completar el hash al integrarlos.
 - Verificación: Backend TypeScript y 28/28 pruebas, incluyendo búsqueda simulada de pago y validación de referencia, monto, moneda y estado; frontend 7/7 pruebas, TypeScript y lint. No se consultó la cuenta real ni se envió ningún webhook en esta sesión.
 - Aprendizaje: El botón de recuperación debe verificar el pago directamente en el proveedor y limitar la consulta a viajes del conductor autenticado.
+
+### Entrada #9
+- Fecha: 2026-11-12
+- Integrante: Pendiente de completar por el equipo
+- Herramienta: Copilot SDK en VS Code
+- Objetivo: Ejecutar los puntos prioritarios de la auditoría del cliente conductor y cerrar la paginación del historial, cancelación segura y resumen financiero.
+- Prompt: "ejecutemos el plan de accion priorizado punto por punto"
+- Resumen de la respuesta: Se corrigió el reintento de registro al resolver errores de campos, se limitó el seguimiento GPS al estado conectado, se implementó la cancelación segura de viajes aceptados/en camino, se reconocieron reembolsos y contracargos, y se agregaron ganancias agregadas y paginación del historial. Se vació la URL de API en la plantilla del frontend.
+- Qué se usó / modificó / descartó: Se conservaron las tres pestañas accesibles del formulario sin crear un navigator Tabs separado. Se confirmó que el alcance de datos es solo-conductor y no incluye `passengerId`; los viajes siguen identificados por el conductor y los campos de pago específicos del proveedor. No se modificaron los archivos sin seguimiento preexistentes `.vscode/` ni `desarrolo_pantallas.md`.
+- Archivos y commit: `backend/src/models/Trip.ts`, `backend/src/routes/trips.ts`, `backend/src/services/mercado-pago.ts`, `backend/src/services/mercado-pago.test.ts`, `frontend/.env.example`, `frontend/src/context/DriverContext.tsx`, `frontend/src/hooks/useDriverLocation.ts`, `frontend/src/hooks/useEarnings.ts`, `frontend/src/screens/features/DriverRegistrationScreen.tsx`, `frontend/src/screens/features/EarningsScreen.tsx`, `frontend/src/screens/features/HistoryScreen.tsx`, `frontend/src/screens/features/TripNavigationScreens.tsx`, `frontend/src/screens/features/TripPaymentScreens.tsx`, `frontend/src/services/api.ts`, `frontend/src/types/domain.ts`, `frontend/src/utils/driver-registration.ts`, `frontend/src/utils/driver-registration.test.ts`, `README.md`, `docs/AI_LOG.md` — cambios sin commit; completar el hash al integrarlos.
+- Verificación: Backend `npm test` (build TypeScript y 28/28 pruebas); frontend `npm test` (8/8), `npx tsc --noEmit`, `npm run lint` y `npm run build` (export Android) pasan. No se conectó a MongoDB ni a servicios externos en esta sesión.
+- Aprendizaje: El resumen financiero debe agregarse en el servidor para evitar que la paginación del historial limite los totales; la cancelación y el GPS deben reforzarse tanto en la API como en el estado del cliente.
+
+### Entrada #10
+- Fecha: 2026-11-12
+- Integrante: Pendiente de completar por el equipo
+- Herramienta: Copilot SDK en VS Code
+- Objetivo: Investigar los avisos de barra de estado de iOS y navegación Drawer reportados al avanzar por el flujo del viaje.
+- Prompt: "Al aceptar un viaje y avanzar por camino a recoger, pasajero a bordo y finalizar, aparecen el aviso `UIViewControllerBasedStatusBarAppearance` y `The action 'CLOSE_DRAWER' was not handled by any navigator`. Revisar el layout y el flujo de navegación para identificar su origen."
+- Resumen de la respuesta: Se encontró que el layout aplica estilos dinámicos de barra de estado globalmente y en las pantallas del viaje. Se dejó de modificar el estilo en iOS, conservando el estilo claro en Android. No se encontró una llamada `closeDrawer` en el código de la app; el único control de Drawer usa `toggleDrawer` dentro de su propio layout.
+- Qué se usó / modificó / descartó: Se omitió el componente Expo StatusBar y `statusBarStyle` en iOS para evitar que Expo Go intente cambiar dinámicamente una barra controlada por su propio Info.plist. No se modificó el Modal del registro porque no contiene StatusBar y no participa en el flujo de viaje. No se aplicó un cierre de Drawer desde pantallas externas, pues no existe tal llamada y hacerlo sin reproducción confirmada sería especulativo.
+- Archivos y commit: `frontend/src/app/_layout.tsx`, `frontend/src/app/(drawer)/_layout.tsx`, `docs/AI_LOG.md` — cambios sin commit; completar el hash al integrarlos.
+- Verificación: Frontend `npm test` (8/8), `npx tsc --noEmit` y `npm run lint` pasan. Falta confirmar el comportamiento en Expo Go/iPhone; el aviso de Drawer requiere reproducción para identificar qué acción lo dispara.
+- Aprendizaje: La configuración `ios.infoPlist` del proyecto no cambia el Info.plist de Expo Go; en ese entorno conviene evitar modificaciones dinámicas de la barra de estado de iOS.
+
+### Entrada #11
+- Fecha: 2026-11-12
+- Integrante: Pendiente de completar por el equipo
+- Herramienta: Copilot SDK en VS Code
+- Objetivo: Revisar y mostrar en el formulario de registro los mínimos, máximos, formatos y condiciones de cada dato.
+- Prompt: "En el formulario de registro necesito un detalle para los datos; no se sabe qué cantidad de caracteres mínimos y máximos se requieren en el campo, sobre todo en el documento y en el número de móvil. Revísalo, por favor, con cada uno de los campos."
+- Resumen de la respuesta: Se cotejaron las validaciones del cliente y del backend y se agregaron textos de ayuda junto a campos de texto, selectores, fechas y fotos en las tres pestañas del registro.
+- Qué se usó / modificó / descartó: Se explicitaron los límites que ya valida el sistema: nombre 1–50, documento 6–10 dígitos, celular exactamente 10, correo hasta 254, contraseña 10–72, placa ABC123, marca/modelo 1–30, año 1950–año actual, capacidad 1–20 (XL 6–20), licencia 1–40, fechas vigentes y fotos JPEG/PNG/WebP hasta 5 MB. No se inventó un formato numérico para el número de licencia porque el backend acepta el texto tal como aparece en el documento.
+- Archivos y commit: `frontend/src/components/ui.tsx`, `frontend/src/screens/features/DriverRegistrationScreen.tsx`, `frontend/src/screens/features/registrationStyles.ts`, `docs/AI_LOG.md` — cambios sin commit; completar el hash al integrarlos.
+- Verificación: Frontend `npm test` (8/8), `npx tsc --noEmit`, `npm run lint` y `npm run build` (export Android) pasan.
+- Aprendizaje: Los límites mostrados en la interfaz deben provenir de las reglas existentes del backend para evitar que la ayuda prometa formatos que el servidor rechaza.
+
+### Entrada #12
+- Fecha: 2026-11-12
+- Integrante: Pendiente de completar por el equipo
+- Herramienta: Copilot SDK en VS Code
+- Objetivo: Corregir la solicitud del permiso de notificaciones Android para que FCM pueda registrar el token y mostrar solicitudes con la app en segundo plano.
+- Prompt: "La aplicación no está trabajando en segundo plano y no está mostrando las notificaciones de viaje asignado."
+- Resumen de la respuesta: Se confirmó que el backend envía un payload FCM con notificación visible y que el cliente registra tokens en builds nativos. Se añadió la declaración del permiso Android 13+ y su solicitud explícita en tiempo de ejecución; si se deniega, la app informa cómo volver a activarlo.
+- Qué se usó / modificó / descartó: Se dejó que Android/iOS presente el payload `notification` de FCM cuando la app está en segundo plano; el manejador JS `onMessage` permanece para primer plano. No se añadió seguimiento GPS en segundo plano porque requiere permisos de ubicación "siempre" y confirmación del comportamiento esperado.
+- Archivos y commit: `frontend/app.json`, `frontend/src/hooks/useDriverRealtime.ts`, `README.md`, `docs/AI_LOG.md` — cambios sin commit; completar el hash al integrarlos.
+- Verificación: Frontend `npm test` (8/8), `npx tsc --noEmit` y `npm run lint` pasan. Falta generar/reinstalar el development build Android para incorporar el permiso nativo y probar entrega real desde Firebase.
+- Aprendizaje: Android 13+ requiere declarar `POST_NOTIFICATIONS` en el manifiesto y pedir aprobación en runtime; Expo Go no carga React Native Firebase.
+
+### Entrada #13
+- Fecha: 2026-11-12
+- Integrante: Pendiente de completar por el equipo
+- Herramienta: Copilot SDK en VS Code
+- Objetivo: Permitir que la app comparta ubicación y reciba avisos de viajes asignados cuando se ejecuta en segundo plano.
+- Prompt: "La aplicación no está trabajando en segundo plano y no está mostrando las notificaciones de viaje asignado. Necesito tanto notificaciones como compartir la ubicación en segundo plano."
+- Resumen de la respuesta: Se añadió una tarea Expo Location definida globalmente que envía ubicaciones al backend usando el token de sesión protegido en SecureStore. El seguimiento solicita permisos de ubicación en primer plano y en segundo plano y se liga al estado disponible/aprobado del conductor; también se configuró el servicio foreground de Android, los modos de ubicación de fondo y el handler FCM de background para builds nativos.
+- Qué se usó / modificó / descartó: Se reutilizó el endpoint autenticado de ubicación existente. El inicio de disponibilidad se revierte si no se puede arrancar el seguimiento y se detiene si el conductor deja de estar disponible o pierde aprobación. No se garantiza ejecución después de forzar el cierre en iOS, por las restricciones del sistema.
+- Archivos y commit: `frontend/index.js`, `frontend/src/services/driver-background-location.ts`, `frontend/src/services/driver-session.ts`, `frontend/src/context/DriverContext.tsx`, `frontend/src/hooks/useDriverRealtime.ts`, `frontend/app.json`, `frontend/app.config.js`, `frontend/eas.json`, `frontend/package.json`, `frontend/package-lock.json`, `README.md`, `docs/AI_LOG.md` — cambios sin commit; completar el hash al integrarlos.
+- Verificación: Backend `npm test` (28/28); frontend `npm test` (8/8), `npx tsc --noEmit`, `npm run lint` y `npm run build` (export Android) pasan. `npx expo config --json` confirma los permisos, plugins FCM y EAS; `android.package` coincide con `google-services.json` y el `applicationId` nativo. Falta generar e instalar el development build, publicar los archivos Firebase ignorados como variables de tipo File en EAS y probar GPS/FCM en dispositivo; la entrega real no se verificó en este entorno.
+- Aprendizaje: Expo Go no valida los permisos nativos ni FCM; el seguimiento y los avisos en background requieren instalar un build nativo y verificar los permisos del sistema y la configuración APNs de Firebase.

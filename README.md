@@ -31,7 +31,7 @@ cd .\frontend
 npm run start -- --lan
 ```
 
-Escanea el QR con el teléfono conectado a la misma Wi-Fi y abre la app en Expo Go o en el development build de UberClone. `frontend/.env` debe apuntar a la IP LAN del computador en `EXPO_PUBLIC_API_URL` (no uses `localhost` en un teléfono físico). Al abrir Inicio, la app solicita permiso de ubicación y centra el mapa en la ubicación real del dispositivo; si todavía no está disponible, centra inicialmente la vista en Medellín. Comparte ubicación con el backend únicamente cuando el conductor esté conectado.
+Escanea el QR con el teléfono conectado a la misma Wi-Fi y abre la app en Expo Go o en el development build de UberClone. `frontend/.env` debe apuntar a la IP LAN del computador en `EXPO_PUBLIC_API_URL` (no uses `localhost` en un teléfono físico). Al abrir Inicio, la app solicita permiso de ubicación y centra el mapa en la ubicación real del dispositivo; si todavía no está disponible, centra inicialmente la vista en Medellín. Comparte ubicación con el backend únicamente cuando el conductor esté conectado. Expo Go sirve para probar la interfaz y la ubicación en primer plano; las notificaciones FCM y el seguimiento en segundo plano requieren un build nativo de desarrollo.
 
 ## 1. Configurar MongoDB Atlas
 
@@ -98,11 +98,14 @@ La app crea el índice único de correo, documento y placa al iniciar el backend
 - `GET /api/drivers/me/trips/next-request`: consulta la solicitud entrante del conductor autenticado.
 - `PATCH /api/drivers/me/trips/:tripId/accept` y `/reject`: acepta o rechaza la solicitud; al vencer los 15 segundos, se marca automáticamente como `rejected`.
 - `PATCH /api/drivers/me/trips/:tripId/arriving`, `/start` y `/complete`: registra el camino a recogida, el inicio y la finalización del viaje, validando cada transición en el backend.
+- `PATCH /api/drivers/me/trips/:tripId/cancel`: cancela un viaje aceptado o en camino antes de iniciarlo; rechaza la cancelación si ya comenzó, tiene un pago aprobado o un checkout activo.
 - `PATCH /api/drivers/me/trips/:tripId/cash-payment`: confirma explícitamente efectivo recibido solo en viajes marcados para pago en efectivo.
 - `POST /api/drivers/me/trips/:tripId/checkout`: crea o devuelve el checkout de Mercado Pago para el viaje finalizado.
 - `GET /api/drivers/me/trips/active`: recupera un viaje aceptado o en curso al restaurar la sesión.
 - `POST /api/drivers/me/trips/:tripId/payment/sync`: consulta Mercado Pago por `external_reference`, verifica estado, monto y COP, y sincroniza el resultado. Solo el conductor dueño del viaje puede invocarlo.
-- `GET /api/drivers/me/trips/history` y `GET /api/drivers/me/trips/:tripId`: consultan hasta 100 viajes propios con filtros por fecha y medio de pago.
+- `GET /api/drivers/me/trips/history`: devuelve el historial propio ordenado del más reciente; admite `offset`, `limit` (20 por defecto, máximo 100), fechas `from`/`to` y `paymentMethod`, y responde con `hasMore` y `nextOffset`.
+- `GET /api/drivers/me/trips/earnings`: agrega métricas de hoy, semana y mes (zona `America/Bogota`) y el saldo histórico del conductor, sin depender de la página cargada del historial.
+- `GET /api/drivers/me/trips/:tripId`: consulta el detalle de un viaje propio.
 - `GET /api/drivers/me/documents/:documentId`: descarga una imagen solo si el documento pertenece al conductor autenticado.
 - `PUT /api/drivers/me/documents/:kind`: sustituye una imagen propia (`profile`, `vehicle`, `license`, `soat`, `revision`).
 
@@ -141,7 +144,9 @@ Después de cambiar el estado, pulsa **Actualizar estado** en Inicio. Mientras l
 2. Configura `EXPO_PUBLIC_API_URL`. En un teléfono físico usa la IP LAN del computador que ejecuta el backend, no `localhost`, por ejemplo `http://192.168.1.10:4000`. El emulador puede requerir una URL diferente.
 3. Configura `GOOGLE_MAPS_API_KEY` con una clave restringida por aplicación para los SDK nativos de Maps. Sin esta clave, Android no puede mostrar correctamente las teselas del mapa.
 4. Para FCM, descarga `google-services.json` y `GoogleService-Info.plist` de tu proyecto Firebase y colócalos en `frontend/`. También puedes indicar sus rutas relativas en `GOOGLE_SERVICES_JSON` y `GOOGLE_SERVICES_PLIST`. Estos archivos locales se excluyen de Git.
-5. Asegúrate de que el firewall permite conexiones al puerto 4000 desde el dispositivo.
+5. En Android 13 o posterior, acepta el permiso de notificaciones que solicita la app. Si fue denegado anteriormente, habilítalo en Ajustes del dispositivo y vuelve a abrir UberClone. Después de cambiar permisos nativos en `app.json`, sincroniza y recompila el cliente con `npx expo prebuild --platform android` y `npx expo run:android`.
+6. Asegúrate de que el firewall permite conexiones al puerto 4000 desde el dispositivo.
+7. Para compartir la ubicación mientras la app está minimizada, acepta el permiso de ubicación en segundo plano. En iOS selecciona **Siempre** (o cambia el permiso en Ajustes > UberClone > Ubicación); en Android permite la ubicación en segundo plano y mantén activa la notificación de servicio que muestra el sistema. El seguimiento solo funciona mientras el conductor aprobado está disponible. Hay que instalar un build nativo nuevo para que los permisos y modos de fondo configurados en `app.json` surtan efecto; compila iOS en macOS o con EAS. Para generar un build de desarrollo iOS desde Windows, inicia sesión en EAS con `npx eas-cli login` y ejecuta `npx eas-cli build --profile development --platform ios`. EAS solicitará vincular el proyecto y las credenciales de Apple necesarias para instalar el build en un iPhone. iOS puede suspender el seguimiento si el usuario fuerza el cierre de la app desde el selector.
 
 En desarrollo, la API acepta orígenes Expo Go (`exp://`) y web (`http://`) desde direcciones IP privadas en los puertos `8081` y `19006`. En producción, configura los orígenes exactos en `FRONTEND_ORIGINS`.
 
@@ -153,17 +158,17 @@ npx expo prebuild --platform android
 npx expo run:android
 ```
 
-React Native Firebase no funciona en Expo Go. Instala y ejecuta la app con el cliente nativo de desarrollo (`npx expo run:android`); después inicia Metro con `npx expo start` y abre el cliente UberClone, no Expo Go. Vuelve a compilar el cliente si cambian las dependencias nativas o la configuración. Para iOS, compila en macOS o con Expo Build. El registro del conductor organiza datos personales, vehículo y documentos/pagos en tres pestañas; valida los campos en línea y solo permite enviar el formulario completo. Acepta fotos JPEG/PNG/WebP (máximo 5 MB por imagen) desde cámara o galería. Las cuentas nuevas quedan `pending`. Solo se guarda el correo de Mercado Pago para pagos; no se solicitan ni guardan números de tarjetas o cuentas bancarias en AsyncStorage. El conductor también puede iniciar/cerrar sesión, editar perfil, vehículo y documentos, cambiar idioma, seguir viajes, pagar y consultar ganancias e historial.
+React Native Firebase no funciona en Expo Go. Instala y ejecuta la app con el cliente nativo de desarrollo (`npx expo run:android`); después inicia Metro con `npx expo start` y abre el cliente UberClone, no Expo Go. En Android 13+ permite las notificaciones del sistema; en iOS acepta los permisos de notificaciones y ubicación **Siempre**, y configura una clave APNs en Firebase. Vuelve a compilar el cliente si cambian las dependencias nativas o la configuración. Para iOS, compila en macOS o con Expo Build/EAS. El registro del conductor organiza datos personales, vehículo y documentos/pagos en tres pestañas; valida los campos en línea y solo permite enviar el formulario completo. Acepta fotos JPEG/PNG/WebP (máximo 5 MB por imagen) desde cámara o galería. Las cuentas nuevas quedan `pending`. Solo se guarda el correo de Mercado Pago para pagos; no se solicitan ni guardan números de tarjetas o cuentas bancarias en AsyncStorage. El conductor también puede iniciar/cerrar sesión, editar perfil, vehículo y documentos, cambiar idioma, seguir viajes, pagar y consultar ganancias e historial.
 
-El Drawer contiene Inicio, Historial, Ganancias, Viaje activo, Perfil y Configuración. El registro usa pestañas con navegación directa y el flujo de viaje usa Stack.
+El Drawer contiene Inicio, Historial, Ganancias, Viaje activo, Perfil y Configuración. El registro conserva tres pestañas accesibles dentro del formulario (sin un navigator Expo Router Tabs separado) y el flujo de viaje usa Stack.
 
-Para probar la aplicación en un iPhone sin compilar un cliente nativo, instala Expo Go y ejecuta `npm run start:go -- --lan` dentro de `frontend`; conecta el iPhone a la misma red Wi-Fi, escanea el QR con la cámara y abre el enlace en Expo Go. En Expo Go se omite la inicialización de Firebase Messaging para evitar cargar un módulo nativo que ese cliente no incluye. Los viajes siguen usando Socket.IO y consulta periódica mientras la aplicación está abierta, pero las notificaciones push de FCM requieren un development build nativo. Si la red local impide conectarse, ejecuta `npm run start:go -- --tunnel`.
+Para probar la interfaz en un iPhone sin compilar un cliente nativo, instala Expo Go y ejecuta `npm run start:go -- --lan` dentro de `frontend`; conecta el iPhone a la misma red Wi-Fi, escanea el QR con la cámara y abre el enlace en Expo Go. En Expo Go se omite la inicialización de Firebase Messaging para evitar cargar un módulo nativo que ese cliente no incluye. Los viajes siguen usando Socket.IO y consulta periódica mientras la aplicación está abierta, pero las notificaciones FCM y el seguimiento GPS en segundo plano requieren un development build nativo. Si la red local impide conectarse, ejecuta `npm run start:go -- --tunnel`.
 
 ## Persistencia y límites de esta fase
 
 - Los perfiles, documentos, disponibilidad, última ubicación, tokens FCM, solicitudes, transiciones y estados de pago se persisten en MongoDB. La sincronización Socket.IO usa Change Streams; configura un replica set.
 - La app usa Distance Matrix al publicar y aceptar cada solicitud, y Directions al comenzar cada etapa; no consulta estas APIs con cada movimiento del GPS. La tarifa y la comisión provienen de `shared/pricing.ts`.
-- El cliente actual es la versión del conductor. La experiencia del pasajero que publica solicitudes todavía se debe integrar con el endpoint protegido de publicación.
+- El cliente actual es la versión del conductor. La experiencia del pasajero que publica solicitudes todavía se debe integrar con el endpoint protegido de publicación; por eso el modelo actual de `trips` no almacena `passengerId`.
 - Imágenes se guardan en GridFS; las claves de MongoDB permanecen solo en `backend/.env`.
 - Los datos de tarjetas o cuentas bancarias no se guardan. Mercado Pago procesa el checkout y el backend almacena solo sus identificadores y estado.
 - La aprobación de conductores se realiza manualmente en MongoDB para la demo. Antes de producción añade un panel administrativo, verificación de correo, recuperación/rotación de sesión, límites de almacenamiento y pruebas de integración con un clúster de pruebas.
