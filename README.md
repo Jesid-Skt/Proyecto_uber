@@ -15,6 +15,24 @@ Los perfiles de conductor, los datos de vehículo y la metadata de documentos se
 - Proyecto Firebase con Cloud Messaging (FCM) y credenciales de servidor configuradas mediante Application Default Credentials.
 - Un build de desarrollo nativo de Expo para FCM; Expo Go no incluye React Native Firebase.
 
+## Inicio rápido para probar la app
+
+Abre dos terminales desde la raíz del proyecto. En la primera, inicia la API:
+
+```powershell
+cd .\backend
+npm run dev
+```
+
+En la segunda, inicia Expo en la red local:
+
+```powershell
+cd .\frontend
+npm run start -- --lan
+```
+
+Escanea el QR con el teléfono conectado a la misma Wi-Fi y abre la app en Expo Go o en el development build de UberClone. `frontend/.env` debe apuntar a la IP LAN del computador en `EXPO_PUBLIC_API_URL` (no uses `localhost` en un teléfono físico). Al abrir Inicio, la app solicita permiso de ubicación y centra el mapa en la ubicación real del dispositivo; si todavía no está disponible, centra inicialmente la vista en Medellín. Comparte ubicación con el backend únicamente cuando el conductor esté conectado.
+
 ## 1. Configurar MongoDB Atlas
 
 1. Crea un usuario de base de datos de mínimo privilegio y habilita la IP que ejecutará el backend en Atlas.
@@ -44,14 +62,14 @@ Los perfiles de conductor, los datos de vehículo y la metadata de documentos se
 
 5. Configura los servicios del servidor en `backend/.env`:
 
-   - `GOOGLE_MAPS_SERVER_API_KEY`: clave restringida a Directions API y Distance Matrix API. Solo se usa en el backend.
+   - `GOOGLE_MAPS_SERVER_API_KEY`: clave restringida a Directions API y Distance Matrix API. Solo se usa en el backend; cuando no se configura, `ORS_API_KEY` proporciona tanto las métricas de distancia y duración como la ruta para la navegación.
    - `FIREBASE_PROJECT_ID` y `GOOGLE_APPLICATION_CREDENTIALS`: proyecto y ruta local, fuera del repositorio, a las credenciales de Firebase Admin. En Azure/GCP puedes usar identidad administrada/credenciales del entorno.
-   - `ORS_API_KEY`: opcional; se usa como alternativa para rutas si no está configurado Google Directions.
+   - `ORS_API_KEY`: alternativa para calcular distancia, duración y ruta de conducción si Google Maps no está configurado.
    - `MERCADO_PAGO_ACCESS_TOKEN`: token `TEST-` de la aplicación de Mercado Pago.
    - `MERCADO_PAGO_WEBHOOK_SECRET`: clave secreta configurada para firmar los webhooks.
    - `BACKEND_PUBLIC_URL`: URL HTTPS pública del backend para que Mercado Pago pueda enviar webhooks. En desarrollo usa un túnel HTTPS; `localhost` no es accesible desde Mercado Pago.
 
-   El backend valida que el token, el secreto de webhook y la URL pública estén configurados juntos. En producción también exige Google Maps y Firebase. No copies credenciales a `.env.example`, al frontend ni a Git.
+   El backend valida que el token, el secreto de webhook y la URL pública estén configurados juntos, y acepta únicamente tokens con prefijo `TEST-` o `APP_USR-`. Usa siempre credenciales `TEST-` para las pruebas de este proyecto; `APP_USR-` corresponde a credenciales de producción. En producción también exige Google Maps y Firebase. No copies credenciales a `.env.example`, al frontend ni a Git.
 
    En el panel de Mercado Pago, registra `https://<dominio-publico>/api/payments/mercadopago/webhook` como URL de notificaciones y habilita eventos de pagos.
 
@@ -83,6 +101,7 @@ La app crea el índice único de correo, documento y placa al iniciar el backend
 - `PATCH /api/drivers/me/trips/:tripId/cash-payment`: confirma explícitamente efectivo recibido solo en viajes marcados para pago en efectivo.
 - `POST /api/drivers/me/trips/:tripId/checkout`: crea o devuelve el checkout de Mercado Pago para el viaje finalizado.
 - `GET /api/drivers/me/trips/active`: recupera un viaje aceptado o en curso al restaurar la sesión.
+- `POST /api/drivers/me/trips/:tripId/payment/sync`: consulta Mercado Pago por `external_reference`, verifica estado, monto y COP, y sincroniza el resultado. Solo el conductor dueño del viaje puede invocarlo.
 - `GET /api/drivers/me/trips/history` y `GET /api/drivers/me/trips/:tripId`: consultan hasta 100 viajes propios con filtros por fecha y medio de pago.
 - `GET /api/drivers/me/documents/:documentId`: descarga una imagen solo si el documento pertenece al conductor autenticado.
 - `PUT /api/drivers/me/documents/:kind`: sustituye una imagen propia (`profile`, `vehicle`, `license`, `soat`, `revision`).
@@ -92,9 +111,9 @@ La app crea el índice único de correo, documento y placa al iniciar el backend
 - `POST /api/payments/mercadopago/webhook`: recibe notificaciones, valida la firma y confirma el estado consultando el pago directamente a Mercado Pago.
 - `POST /api/drivers/me/trips/:tripId/route`: devuelve una ruta de Google Directions (OpenRouteService opcional); admite `pickup`, `destination` y `history`.
 
-El cuerpo de `POST /api/trip-requests` contiene `driverId`, `origin` y `destination` (cada punto con `lat`, `lng` y `address`), `category` (`economy`, `xl` o `premium`) y `paymentMethod` (`cash` o `mercadopago`). No acepta distancia, duración ni tarifa enviados por el cliente: Google Distance Matrix calcula los primeros y la función compartida `shared/pricing.ts` determina tarifa, comisión y ganancia neta. El cálculo se repite al aceptar el viaje.
+El cuerpo de `POST /api/trip-requests` contiene `driverId`, `origin` y `destination` (cada punto con `lat`, `lng` y `address`), `category` (`economy`, `xl` o `premium`) y `paymentMethod` (`cash` o `mercadopago`). No acepta distancia, duración ni tarifa enviados por el cliente: Google Distance Matrix calcula las métricas cuando está configurado; de lo contrario, OpenRouteService las obtiene con una ruta de conducción si `ORS_API_KEY` está disponible. La función compartida `shared/pricing.ts` determina tarifa, comisión y ganancia neta. El cálculo se repite al aceptar el viaje. Si ambos proveedores faltan, la API responde `503` sin inventar distancia ni tarifa.
 
-Para viajes con Mercado Pago, el conductor abre el checkout de prueba desde la pantalla de cobro. El estado no se marca como pagado por regresar del checkout: solo un webhook con firma válida y un pago verificado por el backend lo confirma. Stripe no está integrado; Mercado Pago y efectivo son los medios implementados.
+Para viajes con Mercado Pago, el conductor abre el checkout desde la pantalla de cobro. El webhook firmado confirma los pagos automáticamente; si la notificación no llega, **Consultar estado del pago** invoca el endpoint autenticado de sincronización, que consulta Mercado Pago y valida el pago antes de actualizar la base de datos. Regresar del checkout no confirma el pago. Stripe no está integrado; Mercado Pago y efectivo son los medios implementados.
 
 Mientras está disponible, el cliente envía la ubicación cada pocos segundos al backend. MongoDB Change Streams propaga ubicación y transiciones por Socket.IO; FCM avisa nuevas solicitudes cuando la app está en segundo plano. La app también conserva consulta periódica como respaldo. Google Directions calcula la ruta al iniciar cada etapa del viaje, no en cada actualización GPS; Google Maps puede abrirse para navegación externa en vivo.
 
@@ -120,7 +139,7 @@ Después de cambiar el estado, pulsa **Actualizar estado** en Inicio. Mientras l
    notepad frontend\.env
    ```
 2. Configura `EXPO_PUBLIC_API_URL`. En un teléfono físico usa la IP LAN del computador que ejecuta el backend, no `localhost`, por ejemplo `http://192.168.1.10:4000`. El emulador puede requerir una URL diferente.
-3. Configura `GOOGLE_MAPS_API_KEY` con una clave restringida por aplicación para los SDK nativos de Maps.
+3. Configura `GOOGLE_MAPS_API_KEY` con una clave restringida por aplicación para los SDK nativos de Maps. Sin esta clave, Android no puede mostrar correctamente las teselas del mapa.
 4. Para FCM, descarga `google-services.json` y `GoogleService-Info.plist` de tu proyecto Firebase y colócalos en `frontend/`. También puedes indicar sus rutas relativas en `GOOGLE_SERVICES_JSON` y `GOOGLE_SERVICES_PLIST`. Estos archivos locales se excluyen de Git.
 5. Asegúrate de que el firewall permite conexiones al puerto 4000 desde el dispositivo.
 
@@ -168,4 +187,4 @@ Los tests del frontend cubren validación por pestaña, documentos, fechas, edad
 
 ## Uso de IA
 
-La bitácora está en [frontend/docs/AI_LOG.md](./frontend/docs/AI_LOG.md), con exportación a PDF en [frontend/docs/AI_LOG.pdf](./frontend/docs/AI_LOG.pdf). Completa el nombre del integrante y el hash final del commit.
+La bitácora está en [docs/AI_LOG.md](./docs/AI_LOG.md), con exportación a PDF en [docs/AI_LOG.pdf](./docs/AI_LOG.pdf). Completa el nombre del integrante y el hash final del commit.
