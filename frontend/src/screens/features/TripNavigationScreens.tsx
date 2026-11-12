@@ -1,8 +1,12 @@
 import { Redirect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Linking, Text, View } from 'react-native';
+import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MapView, { Marker, Polyline } from 'react-native-maps';
-import { Button, Card, colors, commonStyles, Label, Page, PageHeading } from '../../components/ui';
+import Animated, { FadeInDown, SlideInUp } from 'react-native-reanimated';
+import { SlideToConfirmButton } from '../../components/SlideToConfirmButton';
+import { tripPalette } from '../../components/trip-flow-theme';
+import { Card, Page } from '../../components/ui';
 import { formatCop } from '../../config/pricing';
 import { useDriver } from '../../context/DriverContext';
 import { useDriverLocation } from '../../hooks/useDriverLocation';
@@ -29,11 +33,13 @@ function TripNavigationMap({
   target,
   coords,
   route,
+  style,
 }: {
   trip: Trip;
   target: 'pickup' | 'destination';
   coords: { latitude: number; longitude: number } | null;
   route: TripRoute | null;
+  style: StyleProp<ViewStyle>;
 }) {
   const isPickup = target === 'pickup';
   const point = isPickup ? trip.origin : trip.destination;
@@ -42,6 +48,40 @@ function TripNavigationMap({
   const longitude = coords ? (coords.longitude + coordinate.longitude) / 2 : coordinate.longitude;
   const latitudeDelta = coords ? Math.max(0.025, Math.abs(coords.latitude - coordinate.latitude) * 2.2) : 0.04;
   const longitudeDelta = coords ? Math.max(0.025, Math.abs(coords.longitude - coordinate.longitude) * 2.2) : 0.04;
+
+  return (
+    <MapView
+      style={style}
+      region={{ latitude, longitude, latitudeDelta, longitudeDelta }}
+      showsUserLocation={Boolean(coords)}
+    >
+      <Marker
+        coordinate={{ latitude: trip.origin.lat, longitude: trip.origin.lng }}
+        title="Punto de recogida"
+        pinColor={isPickup ? tripPalette.accent : undefined}
+      />
+      <Marker
+        coordinate={{ latitude: trip.destination.lat, longitude: trip.destination.lng }}
+        title="Destino"
+        pinColor={!isPickup ? tripPalette.accent : undefined}
+      />
+      {route ? (
+        <Polyline coordinates={route.coordinates} strokeWidth={5} strokeColor={tripPalette.accent} />
+      ) : null}
+    </MapView>
+  );
+}
+
+function NavigationButton({
+  trip,
+  target,
+  coords,
+}: {
+  trip: Trip;
+  target: 'pickup' | 'destination';
+  coords: { latitude: number; longitude: number } | null;
+}) {
+  const point = target === 'pickup' ? trip.origin : trip.destination;
 
   const openNavigation = async () => {
     const origin = coords ? `&origin=${coords.latitude},${coords.longitude}` : '';
@@ -55,28 +95,15 @@ function TripNavigationMap({
   };
 
   return (
-    <>
-      <MapView
-        style={commonStyles.tripMap}
-        region={{ latitude, longitude, latitudeDelta, longitudeDelta }}
-        showsUserLocation={Boolean(coords)}
-      >
-        <Marker
-          coordinate={{ latitude: trip.origin.lat, longitude: trip.origin.lng }}
-          title="Punto de recogida"
-          pinColor={isPickup ? colors.accent : undefined}
-        />
-        <Marker
-          coordinate={{ latitude: trip.destination.lat, longitude: trip.destination.lng }}
-          title="Destino"
-          pinColor={!isPickup ? colors.accent : undefined}
-        />
-        {route ? (
-          <Polyline coordinates={route.coordinates} strokeWidth={5} strokeColor={colors.accent} />
-        ) : null}
-      </MapView>
-      <Button title={`Abrir navegación a ${isPickup ? 'recogida' : 'destino'}`} variant="secondary" onPress={() => void openNavigation()} />
-    </>
+    <Pressable
+      accessibilityRole="button"
+      onPress={() => void openNavigation()}
+      style={styles.navigationButton}
+    >
+      <Text style={styles.navigationButtonText}>
+        Abrir navegación a {target === 'pickup' ? 'recogida' : 'destino'}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -163,41 +190,64 @@ export function PickupNavigationScreen() {
     }
   };
   return (
-    <Page>
-      <PageHeading
-        title={activeTrip.status === 'accepted' ? 'Camino a recoger' : 'Confirma la recogida'}
-        subtitle={activeTrip.status === 'accepted'
-          ? 'Navega hasta el punto indicado para recoger al pasajero.'
-          : 'Cuando el pasajero esté a bordo, confirma para iniciar el viaje.'}
+    <Page backgroundColor={tripPalette.background}>
+      <View style={styles.heading}>
+        <Text style={styles.title}>
+          {activeTrip.status === 'accepted' ? 'Camino a recoger' : 'Confirma la recogida'}
+        </Text>
+        <Text style={styles.subtitle}>
+          {activeTrip.status === 'accepted'
+            ? 'Navega hasta el punto indicado para recoger al pasajero.'
+            : 'Cuando el pasajero esté a bordo, confirma para iniciar el viaje.'}
+        </Text>
+      </View>
+      <TripNavigationMap
+        trip={activeTrip}
+        target="pickup"
+        coords={coords}
+        route={navigation.route}
+        style={styles.pickupMap}
       />
-      <TripNavigationMap trip={activeTrip} target="pickup" coords={coords} route={navigation.route} />
-      <Card>
-        <View style={commonStyles.spread}>
-          <Text style={commonStyles.sectionTitle}>Punto de recogida</Text>
-          <Text style={{ color: colors.accent, fontWeight: '800' }}>
+      <Animated.View entering={FadeInDown.duration(350)}>
+        <Card style={styles.card}>
+          <View style={styles.spread}>
+            <Text style={styles.sectionTitle}>Punto de recogida</Text>
+            <Text style={styles.status}>
             {activeTrip.status === 'accepted' ? 'ACEPTADO' : 'EN CAMINO'}
+            </Text>
+          </View>
+          <Text style={styles.address}>{activeTrip.origin.address}</Text>
+          <Text style={styles.secondary}>Destino: {activeTrip.destination.address}</Text>
+          <Text style={styles.secondary}>
+            {navigation.route
+              ? routeSummary(navigation.route)
+              : `${activeTrip.distanceKm} km · ${activeTrip.durationMin} min estimados`}
           </Text>
-        </View>
-        <Label>{activeTrip.origin.address}</Label>
-        <Label muted>Destino: {activeTrip.destination.address}</Label>
-        <Label muted>{navigation.route ? routeSummary(navigation.route) : `${activeTrip.distanceKm} km · ${activeTrip.durationMin} min estimados`}</Label>
-        <Label muted>Categoría: {activeTrip.category}</Label>
-        {navigation.routeLoading ? <Label muted>Calculando ruta por carretera…</Label> : null}
-        {navigation.routeError ? <Text style={commonStyles.errorText}>{navigation.routeError} Puedes abrir la navegación externa.</Text> : null}
+          <Text style={styles.secondary}>Categoría: {activeTrip.category}</Text>
+          {navigation.routeLoading ? (
+            <Text style={styles.secondary}>Calculando ruta por carretera…</Text>
+          ) : null}
+          {navigation.routeError ? (
+            <Text style={styles.error}>
+              {navigation.routeError} Puedes abrir la navegación externa.
+            </Text>
+          ) : null}
         {locationError || permissionError ? (
-          <Text style={commonStyles.errorText}>{locationError ?? permissionError}</Text>
+            <Text style={styles.error}>{locationError ?? permissionError}</Text>
         ) : null}
-        {error ? <Text style={commonStyles.errorText}>{error}</Text> : null}
-        <Button
-          title={loading
-            ? 'Actualizando…'
-            : activeTrip.status === 'accepted'
-              ? 'Iniciar camino a recogida'
-              : 'Pasajero a bordo'}
-          onPress={() => void confirmPickup()}
-          disabled={loading}
-        />
-      </Card>
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+          <NavigationButton trip={activeTrip} target="pickup" coords={coords} />
+          <SlideToConfirmButton
+            title={loading
+              ? 'Actualizando…'
+              : activeTrip.status === 'accepted'
+                ? 'Iniciar camino a recogida'
+                : 'Pasajero a bordo'}
+            onConfirm={() => void confirmPickup()}
+            disabled={loading}
+          />
+        </Card>
+      </Animated.View>
     </Page>
   );
 }
@@ -207,6 +257,7 @@ export function ActiveTripScreen() {
   const { activeTrip, completeActiveTrip } = useDriver();
   const { coords, error: locationError, permissionError } = useTripLocation();
   const navigation = useTripNavigationRoute(activeTrip?.id ?? '', 'destination', coords);
+  const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   if (!activeTrip) return <Redirect href="/home" />;
@@ -226,34 +277,148 @@ export function ActiveTripScreen() {
     }
   };
   return (
-    <Page>
-      <PageHeading title="Viaje en curso" subtitle="Sigue la navegación hasta el destino del pasajero." />
-      <TripNavigationMap trip={activeTrip} target="destination" coords={coords} route={navigation.route} />
-      <Card>
-        <View style={commonStyles.spread}>
-          <Text style={commonStyles.sectionTitle}>Destino</Text>
-          <Text style={{ color: colors.accent, fontWeight: '800' }}>EN CURSO</Text>
-        </View>
-        <Label>{activeTrip.destination.address}</Label>
-        <Label muted>Desde: {activeTrip.origin.address}</Label>
-        <Label muted>{navigation.route ? routeSummary(navigation.route) : `${activeTrip.distanceKm} km · ${activeTrip.durationMin} min estimados`}</Label>
-        <Label muted>Categoría: {activeTrip.category}</Label>
-        {navigation.routeLoading ? <Label muted>Calculando ruta por carretera…</Label> : null}
-        {navigation.routeError ? <Text style={commonStyles.errorText}>{navigation.routeError} Puedes abrir la navegación externa.</Text> : null}
-        <View style={commonStyles.spread}>
-          <Label>Tarifa registrada</Label>
-          <Text style={{ color: colors.ink, fontWeight: '800' }}>{formatCop(activeTrip.fare)}</Text>
-        </View>
-        {locationError || permissionError ? (
-          <Text style={commonStyles.errorText}>{locationError ?? permissionError}</Text>
-        ) : null}
-        {error ? <Text style={commonStyles.errorText}>{error}</Text> : null}
-        <Button
-          title={loading ? 'Finalizando…' : 'Finalizar viaje'}
-          onPress={() => void finishTrip()}
-          disabled={loading}
-        />
-      </Card>
-    </Page>
+    <View style={styles.activeScreen}>
+      <TripNavigationMap
+        trip={activeTrip}
+        target="destination"
+        coords={coords}
+        route={navigation.route}
+        style={StyleSheet.absoluteFill}
+      />
+      <Animated.View
+        entering={SlideInUp.duration(400)}
+        style={[styles.bottomSheet, { paddingBottom: Math.max(insets.bottom, 14) + 10 }]}
+      >
+        <View style={styles.sheetHandle} />
+        <ScrollView
+          bounces={false}
+          contentContainerStyle={styles.sheetContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.spread}>
+            <Text style={styles.sectionTitle}>Destino</Text>
+            <Text style={styles.status}>EN CURSO</Text>
+          </View>
+          <Text style={styles.destination}>{activeTrip.destination.address}</Text>
+          <Text style={styles.secondary}>Desde: {activeTrip.origin.address}</Text>
+          <View style={styles.metrics}>
+            <View style={styles.metric}>
+              <Text style={styles.metricValue}>
+                {navigation.route
+                  ? routeSummary(navigation.route).split(' · ')[0]
+                  : `${activeTrip.distanceKm} km`}
+              </Text>
+              <Text style={styles.metricLabel}>DISTANCIA</Text>
+            </View>
+            <View style={styles.metric}>
+              <Text style={styles.metricValue}>
+                {navigation.route
+                  ? routeSummary(navigation.route).split(' · ')[1]?.split(' por')[0]
+                  : `${activeTrip.durationMin} min`}
+              </Text>
+              <Text style={styles.metricLabel}>TIEMPO</Text>
+            </View>
+            <View style={styles.metric}>
+              <Text style={styles.metricValue}>{formatCop(activeTrip.fare)}</Text>
+              <Text style={styles.metricLabel}>TARIFA</Text>
+            </View>
+          </View>
+          {navigation.routeLoading ? (
+            <Text style={styles.secondary}>Calculando ruta por carretera…</Text>
+          ) : null}
+          {navigation.routeError ? (
+            <Text style={styles.error}>
+              {navigation.routeError} Puedes abrir la navegación externa.
+            </Text>
+          ) : null}
+          {locationError || permissionError ? (
+            <Text style={styles.error}>{locationError ?? permissionError}</Text>
+          ) : null}
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+          <NavigationButton trip={activeTrip} target="destination" coords={coords} />
+          <SlideToConfirmButton
+            title={loading ? 'Finalizando…' : 'Finalizar viaje'}
+            onConfirm={() => void finishTrip()}
+            disabled={loading}
+          />
+        </ScrollView>
+      </Animated.View>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  activeScreen: { flex: 1, backgroundColor: tripPalette.background },
+  pickupMap: { height: 280, borderRadius: 24 },
+  heading: { gap: 7 },
+  title: { color: tripPalette.text, fontSize: 26, fontWeight: '800' },
+  subtitle: { color: tripPalette.muted, fontSize: 14, lineHeight: 21 },
+  card: {
+    gap: 14,
+    borderRadius: 24,
+    backgroundColor: tripPalette.surface,
+    borderColor: tripPalette.border,
+  },
+  spread: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 },
+  sectionTitle: { color: tripPalette.text, fontSize: 18, fontWeight: '800' },
+  status: { color: tripPalette.accent, fontSize: 11, fontWeight: '800', letterSpacing: 0.8 },
+  address: { color: tripPalette.text, fontSize: 16, fontWeight: '700', lineHeight: 22 },
+  secondary: { color: tripPalette.muted, fontSize: 13, lineHeight: 19 },
+  error: { color: tripPalette.error, fontSize: 13, lineHeight: 19 },
+  navigationButton: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 14,
+    backgroundColor: tripPalette.elevated,
+    borderWidth: 1,
+    borderColor: tripPalette.border,
+    paddingHorizontal: 14,
+  },
+  navigationButtonText: { color: tripPalette.text, fontSize: 14, fontWeight: '700' },
+  bottomSheet: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    maxHeight: '76%',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingTop: 10,
+    paddingHorizontal: 20,
+    backgroundColor: tripPalette.surface,
+    borderWidth: 1,
+    borderColor: tripPalette.border,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: -8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 18,
+  },
+  sheetHandle: {
+    width: 40,
+    height: 4,
+    alignSelf: 'center',
+    marginBottom: 15,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+  },
+  sheetContent: { gap: 14, paddingBottom: 4 },
+  destination: { color: tripPalette.text, fontSize: 20, fontWeight: '800', lineHeight: 26 },
+  metrics: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  metric: {
+    flex: 1,
+    gap: 5,
+    padding: 11,
+    borderRadius: 15,
+    backgroundColor: tripPalette.elevated,
+    borderWidth: 1,
+    borderColor: tripPalette.border,
+  },
+  metricValue: { color: tripPalette.text, fontSize: 14, fontWeight: '800' },
+  metricLabel: { color: tripPalette.muted, fontSize: 9, fontWeight: '700', letterSpacing: 0.6 },
+});

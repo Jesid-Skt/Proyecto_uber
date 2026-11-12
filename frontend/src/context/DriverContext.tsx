@@ -1,4 +1,4 @@
-// AI-assisted: see docs/AI_LOG.md #1 and #3.
+// AI-assisted: see docs/AI_LOG.md #1, #3, and #8.
 import * as SecureStore from 'expo-secure-store';
 import React, {
   createContext,
@@ -46,6 +46,7 @@ type DriverContextValue = {
   refreshTripHistory: (filters?: TripHistoryFilters) => Promise<void>;
   getTripDetails: (tripId: string) => Promise<Trip>;
   refreshActiveTrip: () => Promise<Trip>;
+  syncMercadoPagoPayment: () => Promise<Trip>;
   getTripRoute: (
     tripId: string,
     input: { target: 'pickup' | 'destination' | 'history'; from: { lat: number; lng: number } },
@@ -265,6 +266,21 @@ export function DriverProvider({ children }: React.PropsWithChildren) {
     return trip;
   }, [activeTrip?.id]);
 
+  const syncMercadoPagoPayment = useCallback(async () => {
+    if (!activeTrip || activeTrip.paymentMethod !== 'mercadopago') {
+      throw new Error('No hay un viaje de Mercado Pago pendiente de pago.');
+    }
+    const token = await SecureStore.getItemAsync(SESSION_TOKEN_KEY);
+    if (!token) {
+      throw new ApiError('Inicia sesión para consultar el pago.', 401);
+    }
+    const response = await driverApi.syncMercadoPagoPayment(token, activeTrip.id);
+    const trip = mapTripResponse(response.trip);
+    setActiveTrip(trip);
+    setTrips((current) => [trip, ...current.filter((item) => item.id !== trip.id)]);
+    return trip;
+  }, [activeTrip]);
+
   const getTripRoute = useCallback(async (
     tripId: string,
     input: { target: 'pickup' | 'destination' | 'history'; from: { lat: number; lng: number } },
@@ -389,6 +405,7 @@ export function DriverProvider({ children }: React.PropsWithChildren) {
       refreshTripHistory,
       getTripDetails,
       refreshActiveTrip,
+      syncMercadoPagoPayment,
       getTripRoute,
       acceptRequest,
       rejectRequest,
@@ -419,6 +436,7 @@ export function DriverProvider({ children }: React.PropsWithChildren) {
       refreshTripHistory,
       getTripDetails,
       refreshActiveTrip,
+      syncMercadoPagoPayment,
       getTripRoute,
       acceptRequest,
       rejectRequest,

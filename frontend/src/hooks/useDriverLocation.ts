@@ -1,12 +1,12 @@
-// AI-assisted: see docs/AI_LOG.md #1 and #3.
+// AI-assisted: see docs/AI_LOG.md #1, #3, and #5.
 import { useEffect, useState } from 'react';
 import * as Location from 'expo-location';
 import type { LocationObjectCoords } from 'expo-location';
 
-const BOGOTA = { latitude: 4.6533, longitude: -74.0837 };
+const MEDELLIN = { latitude: 6.2442, longitude: -75.5812 };
 
 export function useDriverLocation(
-  available: boolean,
+  trackingEnabled: boolean,
   onPermissionDenied: () => void,
   onLocation?: (location: { lat: number; lng: number }) => Promise<void>,
 ) {
@@ -14,7 +14,7 @@ export function useDriverLocation(
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!available) {
+    if (!trackingEnabled) {
       return;
     }
 
@@ -79,14 +79,14 @@ export function useDriverLocation(
       active = false;
       subscription?.remove();
     };
-  }, [available, onLocation, onPermissionDenied]);
+  }, [trackingEnabled, onLocation, onPermissionDenied]);
 
   return {
     coords,
     error,
     mapRegion: {
-      latitude: coords?.latitude ?? BOGOTA.latitude,
-      longitude: coords?.longitude ?? BOGOTA.longitude,
+      latitude: coords?.latitude ?? MEDELLIN.latitude,
+      longitude: coords?.longitude ?? MEDELLIN.longitude,
       latitudeDelta: 0.045,
       longitudeDelta: 0.045,
     },

@@ -1,3 +1,4 @@
+// AI-assisted: see docs/AI_LOG.md #5.
 import { useIsFocused, usePathname, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Switch, Text, View } from 'react-native';
@@ -26,18 +27,19 @@ export function HomeScreen() {
   const [approvalRefreshError, setApprovalRefreshError] = useState<string | null>(null);
   const requestCheckRunning = useRef(false);
   const onPermissionDenied = useCallback(() => {
+    if (!available) return;
     void setAvailable(false).catch((error: unknown) => {
       setLocationError(error instanceof Error ? error.message : 'No se pudo desconectar.');
     });
-  }, [setAvailable]);
+  }, [available, setAvailable]);
   const reportLocation = useCallback(async (location: { lat: number; lng: number }) => {
     await updateLocation(location);
     setLocationError(null);
   }, [updateLocation]);
-  const { mapRegion, error: trackingError } = useDriverLocation(
-    available && isFocused,
+  const { coords, mapRegion, error: trackingError } = useDriverLocation(
+    isFocused,
     onPermissionDenied,
-    reportLocation,
+    available ? reportLocation : undefined,
   );
   const { secondsRemaining, expirationError } = useTripRequests();
   const accountApproved = profile?.approvalStatus === 'approved';
@@ -123,8 +125,8 @@ export function HomeScreen() {
         </View>
       </View>
       <Card style={commonStyles.mapCard}>
-        <MapView style={commonStyles.homeMap} region={mapRegion} showsUserLocation={available}>
-          <Marker coordinate={mapRegion} title="Tu ubicación" />
+        <MapView style={commonStyles.homeMap} region={mapRegion} showsUserLocation={Boolean(coords)}>
+          {coords ? <Marker coordinate={mapRegion} title="Tu ubicación" /> : null}
           {activeRequest ? (
             <>
               <Marker
@@ -141,6 +143,9 @@ export function HomeScreen() {
           ) : null}
         </MapView>
       </Card>
+      <Label muted>
+        {coords ? 'Mostrando la ubicación de este dispositivo.' : 'Buscando la ubicación del dispositivo…'}
+      </Label>
       <Card>
         <Text style={commonStyles.sectionTitle}>Estado de cuenta</Text>
         <Text style={profile?.approvalStatus === 'approved' ? commonStyles.statusActive : commonStyles.statusInactive}>

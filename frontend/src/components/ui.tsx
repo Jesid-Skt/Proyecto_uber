@@ -10,6 +10,7 @@ import {
   type ScrollViewProps,
   type TextInputProps,
   type StyleProp,
+  type TextStyle,
   type ViewStyle,
   type ViewProps,
 } from 'react-native';
@@ -21,13 +22,18 @@ export { colors } from '../theme/tokens';
 export function Page({
   children,
   contentContainerStyle,
+  backgroundColor,
   ...scrollViewProps
-}: ScrollViewProps & { contentContainerStyle?: StyleProp<ViewStyle> }) {
+}: ScrollViewProps & {
+  contentContainerStyle?: StyleProp<ViewStyle>;
+  backgroundColor?: string;
+}) {
   const insets = useSafeAreaInsets();
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={[styles.safe, backgroundColor ? { backgroundColor } : null]}>
       <ScrollView
         {...scrollViewProps}
+        style={[backgroundColor ? { backgroundColor } : null, scrollViewProps.style]}
         contentContainerStyle={[
           styles.page,
           { paddingBottom: spacing.pageBottom + insets.bottom },
@@ -61,11 +67,15 @@ export function Button({
   onPress,
   variant = 'primary',
   disabled = false,
+  style,
+  textStyle,
 }: {
   title: string;
   onPress: () => void;
   variant?: 'primary' | 'secondary' | 'danger';
   disabled?: boolean;
+  style?: StyleProp<ViewStyle>;
+  textStyle?: StyleProp<TextStyle>;
 }) {
   return (
     <Pressable
@@ -77,11 +87,12 @@ export function Button({
         styles.button,
         variant === 'secondary' && styles.buttonSecondary,
         variant === 'danger' && styles.buttonDanger,
+        style,
         disabled && styles.buttonDisabled,
       ]}
     >
       <Text
-        style={[styles.buttonText, variant === 'secondary' && styles.buttonSecondaryText]}
+        style={[styles.buttonText, variant === 'secondary' && styles.buttonSecondaryText, textStyle]}
         numberOfLines={1}
         adjustsFontSizeToFit
         minimumFontScale={0.75}
@@ -95,11 +106,15 @@ export function Button({
 export function Field({
   label,
   error,
+  required = false,
   ...props
-}: TextInputProps & { label: string; error?: string }) {
+}: TextInputProps & { label: string; error?: string; required?: boolean }) {
   return (
     <View style={styles.field}>
-      <Text style={styles.label}>{label}</Text>
+      <Text style={styles.label}>
+        {label}
+        {required ? <Text style={styles.required}> *</Text> : null}
+      </Text>
       <TextInput
         {...props}
         placeholderTextColor={colors.placeholder}
@@ -230,6 +245,7 @@ const styles = StyleSheet.create({
   buttonSecondaryText: { color: colors.ink },
   field: { gap: spacing.xs, marginBottom: spacing.md },
   label: { color: colors.ink, fontSize: typography.caption + 1, fontWeight: typography.semibold },
+  required: { color: colors.danger, fontWeight: typography.bold },
   input: {
     width: '100%',
     minWidth: 0,

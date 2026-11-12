@@ -1,4 +1,4 @@
-// AI-assisted: see docs/AI_LOG.md #1 and #3.
+// AI-assisted: see docs/AI_LOG.md #1, #3, and #8.
 import { File } from 'expo-file-system';
 import { Platform } from 'react-native';
 import { io } from 'socket.io-client';
@@ -254,6 +254,13 @@ export const driverApi = {
   createMercadoPagoCheckout(token: string, tripId: string) {
     return request<{ tripId: string; preferenceId: string; checkoutUrl: string }>(
       `/api/drivers/me/trips/${encodeURIComponent(tripId)}/checkout`,
+      { method: 'POST' },
+      token,
+    );
+  },
+  syncMercadoPagoPayment(token: string, tripId: string) {
+    return request<{ trip: TripResponse }>(
+      `/api/drivers/me/trips/${encodeURIComponent(tripId)}/payment/sync`,
       { method: 'POST' },
       token,
     );

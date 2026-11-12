@@ -1,8 +1,9 @@
-// AI-assisted: see docs/AI_LOG.md #1 and #3.
+// AI-assisted: see docs/AI_LOG.md #1, #3, and #7.
 import { Redirect } from 'expo-router';
 import { Drawer } from 'expo-router/drawer';
 import React from 'react';
-import { colors } from '../../components/ui';
+import { FloatingMenuButton } from '../../components/FloatingMenuButton';
+import { tripPalette } from '../../components/trip-flow-theme';
 import { useDriver } from '../../context/DriverContext';
 
 export default function DrawerLayout() {
@@ -10,24 +11,26 @@ export default function DrawerLayout() {
   if (sessionLoading) return null;
   if (!profile) return <Redirect href="/login" />;
   return (
-    <Drawer screenOptions={{
-      headerStyle: { backgroundColor: colors.surface },
-      headerTintColor: colors.ink,
-      headerTitleStyle: { color: colors.ink },
-      drawerStyle: { backgroundColor: colors.background },
-      drawerContentStyle: { backgroundColor: colors.background },
-      drawerActiveTintColor: colors.onAccent,
-      drawerActiveBackgroundColor: colors.accent,
-      drawerInactiveTintColor: colors.muted,
+    <Drawer screenOptions={({ navigation }) => ({
+      headerStyle: { backgroundColor: tripPalette.background },
+      headerTintColor: tripPalette.text,
+      headerTitleStyle: { color: tripPalette.text, fontWeight: '700' },
+      statusBarStyle: 'light',
+      headerLeft: () => (
+        <FloatingMenuButton onPress={() => navigation.toggleDrawer()} />
+      ),
+      headerLeftContainerStyle: { paddingLeft: 12 },
+      drawerStyle: { backgroundColor: tripPalette.background },
+      drawerContentStyle: { backgroundColor: tripPalette.background },
+      drawerActiveTintColor: tripPalette.accent,
+      drawerActiveBackgroundColor: 'rgba(16,185,129,0.14)',
+      drawerInactiveTintColor: tripPalette.muted,
       drawerLabelStyle: { fontWeight: '600' },
-    }}>
+      sceneStyle: { backgroundColor: tripPalette.background },
+    })}>
       <Drawer.Screen name="home" options={{ title: 'Conducir', drawerLabel: 'Inicio' }} />
       <Drawer.Screen name="history" options={{ title: 'Historial', drawerLabel: 'Historial' }} />
       <Drawer.Screen name="earnings" options={{ title: 'Ganancias', drawerLabel: 'Ganancias' }} />
-      <Drawer.Screen
-        name="trip-request"
-        options={{ title: 'Solicitud de viaje', drawerLabel: 'Solicitud de viaje' }}
-      />
       <Drawer.Screen
         name="current-trip"
         options={{ title: 'Viaje activo', drawerLabel: 'Viaje activo' }}

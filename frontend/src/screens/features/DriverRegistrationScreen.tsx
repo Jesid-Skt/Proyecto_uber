@@ -3,14 +3,19 @@ import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { useState } from 'react';
-import { Image, Pressable, Text, View } from 'react-native';
+import { Image, Modal, Platform, Pressable, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button, Card, commonStyles, Field, Label, Page, PageHeading } from '../../components/ui';
 import { PRICING } from '../../config/pricing';
 import { useDriver } from '../../context/DriverContext';
 import { ApiError, appendImage } from '../../services/api';
 import { registrationStyles } from './registrationStyles';
 import { getRegistrationStepErrors, type RegistrationData } from '../../utils/driver-registration';
-import { formatDate, formatDateInput } from '../shared/formatters';
+import { formatDateInput } from '../shared/formatters';
+
+function formatRegistrationDate(date: Date): string {
+  return `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`;
+}
 
 const initialRegistration: RegistrationData = {
   fullName: '',
@@ -43,6 +48,7 @@ const initialRegistration: RegistrationData = {
 export function DriverRegistrationScreen() {
   const { register, profile } = useDriver();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [step, setStep] = useState(0);
   const [data, setData] = useState(initialRegistration);
   const [termsAccepted, setTermsAccepted] = useState(false);
@@ -216,7 +222,8 @@ export function DriverRegistrationScreen() {
   ) => (
     <View style={registrationStyles.formField}>
       <Field
-        label={`${label} *`}
+        label={label}
+        required
         value={data[key]}
         onChangeText={(value) => update(key, options?.upper ? value.toUpperCase() : value)}
         error={fieldErrors[key]}
@@ -231,7 +238,9 @@ export function DriverRegistrationScreen() {
   const photo = (field: string, label: string) => (
     <View style={registrationStyles.photoField}>
       <View style={commonStyles.spread}>
-        <Text style={registrationStyles.fieldLabel}>{label} *</Text>
+        <Text style={registrationStyles.fieldLabel}>
+          {label}<Text style={registrationStyles.requiredMark}> *</Text>
+        </Text>
         <Text style={registrationStyles.requiredTag}>Obligatorio</Text>
       </View>
       {data[field] ? (
@@ -262,7 +271,9 @@ export function DriverRegistrationScreen() {
     const expanded = openDropdown === key;
     return (
       <View style={registrationStyles.formField}>
-        <Text style={registrationStyles.fieldLabel}>{label} *</Text>
+        <Text style={registrationStyles.fieldLabel}>
+          {label}<Text style={registrationStyles.requiredMark}> *</Text>
+        </Text>
         <Pressable
           accessibilityRole="button"
           accessibilityState={{ expanded }}
@@ -319,9 +330,12 @@ export function DriverRegistrationScreen() {
   };
   const dateFieldControl = (key: string, label: string) => (
     <View style={registrationStyles.formField}>
-      <Text style={registrationStyles.fieldLabel}>{label} *</Text>
+      <Text style={registrationStyles.fieldLabel}>
+        {label}<Text style={registrationStyles.requiredMark}> *</Text>
+      </Text>
       <Pressable
         accessibilityRole="button"
+        accessibilityLabel={`${label}, ${data[key] ? formatRegistrationDate(new Date(`${data[key]}T12:00:00`)) : 'seleccionar fecha'}`}
         onPress={() => showDatePicker(key, data[key])}
         style={[
           registrationStyles.dropdownTrigger,
@@ -337,29 +351,10 @@ export function DriverRegistrationScreen() {
             data[key] ? registrationStyles.dropdownValue : registrationStyles.dropdownPlaceholder,
           ]}
         >
-          {data[key] ? formatDate(new Date(`${data[key]}T12:00:00`)) : 'Selecciona una fecha'}
+          {data[key] ? formatRegistrationDate(new Date(`${data[key]}T12:00:00`)) : 'Selecciona una fecha'}
         </Text>
         <Text style={registrationStyles.calendarGlyph}>▦</Text>
       </Pressable>
-      {dateField === key ? (
-        <View style={registrationStyles.datePickerContainer}>
-          <DateTimePicker
-            value={pendingDate}
-            mode="date"
-            maximumDate={key === 'birthDate'
-              ? new Date(new Date().getFullYear() - 18, new Date().getMonth(), new Date().getDate())
-              : undefined}
-            minimumDate={key === 'birthDate'
-              ? undefined
-              : new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate() + 1)}
-            onValueChange={(_, selectedDate) => {
-              setDateField(null);
-              update(key, formatDateInput(selectedDate));
-            }}
-            onDismiss={() => setDateField(null)}
-          />
-        </View>
-      ) : null}
       {fieldErrors[key] ? <Text style={registrationStyles.error}>{fieldErrors[key]}</Text> : null}
     </View>
   );
@@ -418,11 +413,12 @@ export function DriverRegistrationScreen() {
             <Text
               numberOfLines={1}
               adjustsFontSizeToFit
-              minimumFontScale={0.75}
+              minimumFontScale={0.8}
               style={[
-              registrationStyles.tabLabel,
-              step === index ? registrationStyles.activeTabText : null,
-            ]}>
+                registrationStyles.tabLabel,
+                step === index ? registrationStyles.activeTabText : null,
+              ]}
+            >
               {name}
             </Text>
           </Pressable>
@@ -530,12 +526,15 @@ export function DriverRegistrationScreen() {
               }}
             />
           </View>
-        ) : <View style={registrationStyles.navigationButton} />}
-          {step < 2 ? (
-          <View style={registrationStyles.navigationButton}>
+        ) : null}
+        {step < 2 ? (
+          <View style={step === 0
+            ? registrationStyles.navigationSoloButton
+            : registrationStyles.navigationButton}
+          >
             <Button title="Continuar" onPress={next} />
           </View>
-          ) : (
+        ) : (
           <View style={registrationStyles.navigationButton}>
             <Button
               title={submitting ? 'Enviando registro…' : 'Enviar registro'}
@@ -552,6 +551,81 @@ export function DriverRegistrationScreen() {
             ? 'Ya tienes una sesión iniciada.'
             : 'Tus datos se envían al backend de forma segura. Tu cuenta quedará pendiente de aprobación.'}
       </Label>
+      {Platform.OS === 'ios' ? (
+        <Modal
+          visible={dateField !== null}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setDateField(null)}
+        >
+          <View style={registrationStyles.dateModalBackdrop}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Cerrar selector de fecha"
+              style={registrationStyles.dateModalDismiss}
+              onPress={() => setDateField(null)}
+            />
+            <View
+              style={[
+                registrationStyles.dateModalSheet,
+                { paddingBottom: Math.max(insets.bottom, 20) },
+              ]}
+            >
+              <View style={registrationStyles.dateModalHeader}>
+                <Text style={registrationStyles.dateModalTitle}>
+                  {dateField === 'birthDate'
+                    ? 'Fecha de nacimiento'
+                    : dateField === 'licenseExpiry'
+                      ? 'Vencimiento de licencia'
+                      : dateField === 'soatExpiry'
+                        ? 'Vencimiento del SOAT'
+                        : 'Vencimiento de revisión'}
+                </Text>
+                <Button
+                  title="Listo"
+                  onPress={() => {
+                    if (dateField) update(dateField, formatDateInput(pendingDate));
+                    setDateField(null);
+                  }}
+                />
+              </View>
+              {dateField ? (
+                <DateTimePicker
+                  style={registrationStyles.datePicker}
+                  value={pendingDate}
+                  mode="date"
+                  display="spinner"
+                  locale="es-CO"
+                  maximumDate={dateField === 'birthDate'
+                    ? new Date(new Date().getFullYear() - 18, new Date().getMonth(), new Date().getDate())
+                    : undefined}
+                  minimumDate={dateField === 'birthDate'
+                    ? undefined
+                    : new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate() + 1)}
+                  onValueChange={(_, selectedDate) => setPendingDate(selectedDate)}
+                />
+              ) : null}
+            </View>
+          </View>
+        </Modal>
+      ) : dateField ? (
+        <DateTimePicker
+          value={pendingDate}
+          mode="date"
+          display="default"
+          maximumDate={dateField === 'birthDate'
+            ? new Date(new Date().getFullYear() - 18, new Date().getMonth(), new Date().getDate())
+            : undefined}
+          minimumDate={dateField === 'birthDate'
+            ? undefined
+            : new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate() + 1)}
+          onValueChange={(_, selectedDate) => {
+            update(dateField, formatDateInput(selectedDate));
+            setDateField(null);
+          }}
+          onDismiss={() => setDateField(null)}
+        />
+      ) : null}
     </Page>
   );
 }

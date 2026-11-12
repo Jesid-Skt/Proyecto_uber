@@ -1,8 +1,11 @@
+// AI-assisted: see docs/AI_LOG.md #8.
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Linking, Text, View } from 'react-native';
+import { Linking, StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, Polyline } from 'react-native-maps';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Button, Card, colors, commonStyles, Label, Page, PageHeading } from '../../components/ui';
+import { tripPalette } from '../../components/trip-flow-theme';
 import { formatCop } from '../../config/pricing';
 import { useDriver } from '../../context/DriverContext';
 import type { Trip, TripRoute } from '../../types/domain';
@@ -10,7 +13,13 @@ import { formatDate, paymentMethodLabel } from '../shared/formatters';
 
 export function TripPaymentScreen() {
   const router = useRouter();
-  const { activeTrip, confirmCashPayment, createPaymentCheckout, refreshActiveTrip } = useDriver();
+  const {
+    activeTrip,
+    confirmCashPayment,
+    createPaymentCheckout,
+    refreshActiveTrip,
+    syncMercadoPagoPayment,
+  } = useDriver();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -77,65 +86,161 @@ export function TripPaymentScreen() {
       setLoading(false);
     }
   };
+  const syncPayment = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      await syncMercadoPagoPayment();
+    } catch (paymentError) {
+      setError(paymentError instanceof Error
+        ? paymentError.message
+        : 'No se pudo consultar el estado del pago en Mercado Pago.');
+    } finally {
+      setLoading(false);
+    }
+  };
   return (
-    <Page>
-      <PageHeading title="Cobro del viaje" subtitle="Confirma el pago según el método acordado." />
-      <Card>
-        <View style={commonStyles.spread}><Label>Valor registrado</Label><Text style={commonStyles.statValue}>{formatCop(activeTrip.fare)}</Text></View>
-        <View style={commonStyles.spread}><Label>Comisión</Label><Label>{formatCop(activeTrip.commission)}</Label></View>
-        <View style={commonStyles.spread}><Label>Ganancia neta</Label><Text style={commonStyles.emphasisValue}>{formatCop(activeTrip.driverEarnings)}</Text></View>
-        <Label>Método de pago: {paymentMethodLabel(activeTrip.paymentMethod)}</Label>
-        <Label>
-          Estado del pago: {{
-            pending: 'Pendiente',
-            approved: 'Aprobado por Mercado Pago',
-            rejected: 'Rechazado',
-            cash: 'Efectivo recibido',
-          }[activeTrip.paymentStatus]}
-        </Label>
-        {activeTrip.tip > 0 ? (
-          <View style={commonStyles.spread}><Label>Propina</Label><Label>{formatCop(activeTrip.tip)}</Label></View>
-        ) : null}
-      </Card>
-      {error ? <Card><Text style={commonStyles.errorText}>{error}</Text></Card> : null}
+    <Page backgroundColor={tripPalette.background}>
+      <View style={styles.heading}>
+        <Text style={styles.eyebrow}>RESUMEN DE PAGO</Text>
+        <Text style={styles.title}>Cobro del viaje</Text>
+        <Text style={styles.subtitle}>Confirma el pago según el método acordado.</Text>
+      </View>
+      <Animated.View entering={FadeInDown.duration(350)}>
+        <Card style={styles.card}>
+          <View style={styles.row}>
+            <Text style={styles.secondary}>Valor registrado</Text>
+            <Text style={styles.amount}>{formatCop(activeTrip.fare)}</Text>
+          </View>
+          <View style={styles.row}>
+            <Text style={styles.secondary}>Comisión</Text>
+            <Text style={styles.body}>{formatCop(activeTrip.commission)}</Text>
+          </View>
+          <View style={styles.earnings}>
+            <View>
+              <Text style={styles.earningsLabel}>GANANCIA NETA</Text>
+              <Text style={styles.earningsValue}>{formatCop(activeTrip.driverEarnings)}</Text>
+            </View>
+            <Text style={styles.currencyMark}>$</Text>
+          </View>
+          <View style={styles.detailRow}>
+            <Text style={styles.secondary}>Método de pago</Text>
+            <Text style={styles.body}>{paymentMethodLabel(activeTrip.paymentMethod)}</Text>
+          </View>
+          <View style={styles.detailRow}>
+            <Text style={styles.secondary}>Estado del pago</Text>
+            <Text style={styles.body}>
+              {{
+                pending: 'Pendiente',
+                approved: 'Aprobado por Mercado Pago',
+                rejected: 'Rechazado',
+                cash: 'Efectivo recibido',
+              }[activeTrip.paymentStatus]}
+            </Text>
+          </View>
+          {activeTrip.tip > 0 ? (
+            <View style={styles.detailRow}>
+              <Text style={styles.secondary}>Propina</Text>
+              <Text style={styles.body}>{formatCop(activeTrip.tip)}</Text>
+            </View>
+          ) : null}
+        </Card>
+      </Animated.View>
+      {error ? (
+        <Card style={styles.card}>
+          <Text style={styles.error}>{error}</Text>
+        </Card>
+      ) : null}
       {activeTrip.paymentMethod === 'cash' ? (
         <Button
           title={loading ? 'Confirmando…' : 'Confirmar efectivo recibido'}
           onPress={() => void confirmCash()}
           disabled={loading}
+          style={styles.actionButton}
+          textStyle={styles.actionButtonText}
         />
       ) : (
-        <Card>
-          <Label>
+        <Animated.View entering={FadeInDown.delay(100).duration(350)}>
+        <Card style={styles.card}>
+          <Text style={styles.body}>
             Completa el checkout de prueba de Mercado Pago en el navegador. El backend confirmará el pago mediante una notificación firmada.
-          </Label>
+          </Text>
           <Button
             title={loading ? 'Abriendo checkout…' : 'Abrir checkout de Mercado Pago'}
             onPress={() => void openMercadoPagoCheckout()}
             disabled={loading || activeTrip.paymentStatus === 'approved'}
+            style={styles.actionButton}
+            textStyle={styles.actionButtonText}
           />
-          <Label muted>
+          <Text style={styles.secondary}>
             {refreshing ? 'Consultando el estado del pago…' : 'La pantalla se actualizará automáticamente cuando el pago sea confirmado.'}
-          </Label>
+          </Text>
           {activeTrip.paymentStatus === 'rejected' ? (
-            <Label muted>El pago fue rechazado. El pasajero debe intentar nuevamente desde su flujo de pago.</Label>
+            <Text style={styles.secondary}>El pago fue rechazado. El pasajero debe intentar nuevamente desde su flujo de pago.</Text>
           ) : null}
           {refreshing ? null : (
             <Button
-              title="Consultar estado del pago"
+              title={loading ? 'Consultando Mercado Pago…' : 'Consultar estado del pago'}
               variant="secondary"
-              onPress={() => void refreshActiveTrip().catch((paymentError: unknown) => {
-                setError(paymentError instanceof Error
-                  ? paymentError.message
-                  : 'No se pudo consultar el estado del pago.');
-              })}
+              onPress={() => void syncPayment()}
+              disabled={loading}
+              style={styles.secondaryButton}
+              textStyle={styles.actionButtonText}
             />
           )}
         </Card>
+        </Animated.View>
       )}
     </Page>
   );
 }
+
+const styles = StyleSheet.create({
+  heading: { gap: 7, marginBottom: 4 },
+  eyebrow: { color: tripPalette.accent, fontSize: 11, fontWeight: '800', letterSpacing: 1.4 },
+  title: { color: tripPalette.text, fontSize: 28, fontWeight: '800' },
+  subtitle: { color: tripPalette.muted, fontSize: 14, lineHeight: 21 },
+  card: {
+    gap: 16,
+    borderRadius: 24,
+    backgroundColor: tripPalette.surface,
+    borderColor: tripPalette.border,
+  },
+  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
+  amount: { color: tripPalette.text, fontSize: 20, fontWeight: '800' },
+  body: { color: tripPalette.text, fontSize: 14, lineHeight: 21 },
+  secondary: { color: tripPalette.muted, fontSize: 13, lineHeight: 19 },
+  earnings: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderRadius: 18,
+    backgroundColor: tripPalette.elevated,
+    borderWidth: 1,
+    borderColor: tripPalette.border,
+  },
+  earningsLabel: { color: tripPalette.accent, fontSize: 10, fontWeight: '800', letterSpacing: 0.9 },
+  earningsValue: { marginTop: 4, color: tripPalette.text, fontSize: 25, fontWeight: '800' },
+  currencyMark: { color: tripPalette.accent, fontSize: 28, fontWeight: '800' },
+  detailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderColor: tripPalette.border,
+  },
+  error: { color: tripPalette.error, fontSize: 14, lineHeight: 20 },
+  actionButton: { backgroundColor: tripPalette.accent, borderRadius: 16 },
+  actionButtonText: { color: tripPalette.background },
+  secondaryButton: {
+    backgroundColor: tripPalette.elevated,
+    borderWidth: 1,
+    borderColor: tripPalette.border,
+  },
+});
 
 export function TripSummaryScreen() {
   const router = useRouter();
