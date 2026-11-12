@@ -1,14 +1,20 @@
-// AI-assisted: see docs/AI_LOG.md #3.
+// AI-assisted: see docs/AI_LOG.md #3, #6, and #8.
 import { Router } from 'express';
 import mongoose from 'mongoose';
 import { authenticate } from '../middleware/authenticate.js';
 import { Driver } from '../models/Driver.js';
 import { Trip } from '../models/Trip.js';
 import { serializeTrip } from '../services/trip-serializer.js';
-import { getDrivingRoute } from '../services/openrouteservice.js';
-import { getTripMetrics } from '../services/google-maps.js';
+import { getDrivingRoute as getOpenRouteServiceRoute } from '../services/openrouteservice.js';
+import { getGoogleDrivingRoute, getTripMetrics } from '../services/google-maps.js';
+import { env } from '../config/env.js';
 import { calculateTripFare } from '../utils/trip-validation.js';
-import { createMercadoPagoCheckout } from '../services/mercado-pago.js';
+import {
+  createMercadoPagoCheckout,
+  mapMercadoPagoPaymentStatus,
+  selectVerifiedTripPayment,
+  searchMercadoPagoPaymentsByExternalReference,
+} from '../services/mercado-pago.js';
 import { z } from 'zod';
 import { HttpError } from '../utils/http-error.js';
 import { tripIdSchema, tripRouteSchema } from '../utils/trip-validation.js';
@@ -110,10 +116,13 @@ router.post('/:tripId/route', async (request, response) => {
   if (target === 'history' && !['completed', 'paid'].includes(trip.status)) {
     throw new HttpError(409, 'El detalle de ruta solo está disponible para viajes finalizados.');
   }
-  const route = await getDrivingRoute({
+  const routeInput = {
     from: { lat: routeOrigin.lat, lng: routeOrigin.lng },
     to: { lat: destination.lat, lng: destination.lng },
-  });
+  };
+  const route = env.GOOGLE_MAPS_SERVER_API_KEY
+    ? await getGoogleDrivingRoute(routeInput)
+    : await getOpenRouteServiceRoute(routeInput);
   response.json({ route });
 });
 
@@ -171,6 +180,50 @@ router.post('/:tripId/checkout', async (request, response) => {
     preferenceId: checkout.preferenceId,
     checkoutUrl: checkout.checkoutUrl,
   });
+});
+
+router.post('/:tripId/payment/sync', async (request, response) => {
+  const id = tripIdSchema.safeParse(request.params.tripId);
+  if (!id.success) {
+    throw new HttpError(400, 'El identificador del viaje no es válido.');
+  }
+  const trip = await Trip.findOne({
+    _id: new mongoose.Types.ObjectId(id.data),
+    driverId: request.driverId,
+    paymentMethod: 'mercadopago',
+  });
+  if (!trip) {
+    throw new HttpError(404, 'No se encontró un viaje de Mercado Pago para esta cuenta.');
+  }
+  if (!['completed', 'paid'].includes(trip.status)) {
+    throw new HttpError(409, 'El pago solo se puede sincronizar después de finalizar el viaje.');
+  }
+  if (trip.status === 'paid' && trip.paymentStatus === 'approved') {
+    response.json({ trip: serializeTrip(trip) });
+    return;
+  }
+
+  const payments = await searchMercadoPagoPaymentsByExternalReference(trip.id);
+  const { payment, referenceFound } = selectVerifiedTripPayment(payments, trip.id, trip.fare);
+  if (!payment) {
+    if (referenceFound) {
+      console.error('El pago encontrado no coincide con el monto o la moneda del viaje.', {
+        tripId: trip.id,
+        fare: trip.fare,
+      });
+      throw new HttpError(409, 'El pago encontrado no coincide con el monto o la moneda del viaje.');
+    }
+    throw new HttpError(404, 'Mercado Pago todavía no registra un pago para este viaje.');
+  }
+
+  const paymentStatus = mapMercadoPagoPaymentStatus(payment.status);
+  trip.mercadoPagoPaymentId = String(payment.id);
+  trip.paymentStatus = paymentStatus;
+  if (paymentStatus === 'approved') {
+    trip.status = 'paid';
+  }
+  await trip.save();
+  response.json({ trip: serializeTrip(trip) });
 });
 
 router.patch('/:tripId/accept', async (request, response) => {

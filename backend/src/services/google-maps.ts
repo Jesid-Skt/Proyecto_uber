@@ -1,7 +1,8 @@
-// AI-assisted: see docs/AI_LOG.md #3.
+// AI-assisted: see docs/AI_LOG.md #3 and #6.
 import { z } from 'zod';
 import { env } from '../config/env.js';
 import { HttpError } from '../utils/http-error.js';
+import { getOpenRouteServiceRoute } from './openrouteservice.js';
 
 const distanceMatrixSchema = z.object({
   status: z.string(),
@@ -81,6 +82,20 @@ export async function getTripMetrics(input: {
   from: { lat: number; lng: number };
   to: { lat: number; lng: number };
 }): Promise<TripMetrics> {
+  if (!env.GOOGLE_MAPS_SERVER_API_KEY) {
+    if (!env.ORS_API_KEY) {
+      throw new HttpError(
+        503,
+        'Configura GOOGLE_MAPS_SERVER_API_KEY o ORS_API_KEY para calcular distancia y duración.',
+      );
+    }
+    const route = await getOpenRouteServiceRoute(input);
+    return {
+      distanceKm: Math.round((route.distanceMeters / 1000) * 100) / 100,
+      durationMin: Math.max(1, Math.ceil(route.durationSeconds / 60)),
+    };
+  }
+
   const url = new URL('https://maps.googleapis.com/maps/api/distancematrix/json');
   url.search = new URLSearchParams({
     origins: `${input.from.lat},${input.from.lng}`,

@@ -34,3 +34,18 @@ test('requires Mercado Pago webhook credentials and a public backend URL togethe
   });
   assert.equal(configured.success, true);
 });
+
+test('rejects Mercado Pago credentials without a recognized provider prefix', () => {
+  const parsed = envSchema.safeParse({
+    ...validDevelopmentEnv,
+    MERCADO_PAGO_ACCESS_TOKEN: 'invalid-provider-token',
+    MERCADO_PAGO_WEBHOOK_SECRET: 'w'.repeat(32),
+    BACKEND_PUBLIC_URL: 'https://api.example.test',
+  });
+  assert.equal(parsed.success, false);
+  if (!parsed.success) {
+    assert.ok(parsed.error.issues.some((issue) =>
+      issue.path.includes('MERCADO_PAGO_ACCESS_TOKEN'),
+    ));
+  }
+});

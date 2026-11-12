@@ -10,7 +10,7 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "start": "node dist/backend/src/server.js",
-    "test": "npm run build && node --test dist/backend/src/**/*.test.js"
+    "test": "npm run build && node --import ./dist/backend/src/config/test-env.js --test dist/backend/src/**/*.test.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

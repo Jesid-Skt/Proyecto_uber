@@ -1,4 +1,4 @@
-// AI-assisted: see docs/AI_LOG.md #3.
+// AI-assisted: see docs/AI_LOG.md #3 and #4.
 import 'dotenv/config';
 import { z } from 'zod';
 
@@ -52,6 +52,18 @@ export const envSchema = z.object({
     });
   }
   const mercadoPagoConfigured = Boolean(value.MERCADO_PAGO_ACCESS_TOKEN);
+  const hasValidMpPrefix =
+    value.MERCADO_PAGO_ACCESS_TOKEN?.startsWith('APP_USR-') ||
+    value.MERCADO_PAGO_ACCESS_TOKEN?.startsWith('TEST-');
+
+  if (mercadoPagoConfigured && !hasValidMpPrefix) {
+    context.addIssue({
+      code: 'custom',
+      path: ['MERCADO_PAGO_ACCESS_TOKEN'],
+      message: 'Usa únicamente un access token válido de Mercado Pago (prefijo APP_USR- o TEST-).',
+    });
+  }
+
   if (mercadoPagoConfigured && !value.MERCADO_PAGO_WEBHOOK_SECRET) {
     context.addIssue({
       code: 'custom',

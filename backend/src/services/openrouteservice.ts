@@ -1,10 +1,7 @@
 import { z } from 'zod';
 import { env } from '../config/env.js';
 import { HttpError } from '../utils/http-error.js';
-import {
-  getGoogleDrivingRoute,
-  type DrivingRoute,
-} from './google-maps.js';
+import type { DrivingRoute } from './google-maps.js';
 
 const directionsResponseSchema = z.object({
   features: z.array(z.object({
@@ -38,15 +35,12 @@ export function parseDrivingRouteResponse(responseBody: unknown): DrivingRoute {
   };
 }
 
-export async function getDrivingRoute(input: {
+export async function getOpenRouteServiceRoute(input: {
   from: { lat: number; lng: number };
   to: { lat: number; lng: number };
 }): Promise<DrivingRoute> {
-  if (env.GOOGLE_MAPS_SERVER_API_KEY) {
-    return getGoogleDrivingRoute(input);
-  }
   if (!env.ORS_API_KEY) {
-    throw new HttpError(503, 'Configura GOOGLE_MAPS_SERVER_API_KEY o ORS_API_KEY para usar la navegación.');
+    throw new HttpError(503, 'Configura ORS_API_KEY para usar OpenRouteService.');
   }
 
   let response: Response;
@@ -84,3 +78,5 @@ export async function getDrivingRoute(input: {
   }
   return parseDrivingRouteResponse(responseBody);
 }
+
+export const getDrivingRoute = getOpenRouteServiceRoute;
