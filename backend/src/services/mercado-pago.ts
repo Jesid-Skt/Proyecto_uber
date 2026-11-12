@@ -217,8 +217,12 @@ export async function searchMercadoPagoPaymentsByExternalReference(
   return parsed.data.results;
 }
 
-export function mapMercadoPagoPaymentStatus(status: string): 'approved' | 'pending' | 'rejected' {
+export function mapMercadoPagoPaymentStatus(
+  status: string,
+): 'approved' | 'pending' | 'rejected' | 'refunded' | 'charged_back' {
   if (status === 'approved') return 'approved';
-  if (['rejected', 'cancelled', 'refunded', 'charged_back'].includes(status)) return 'rejected';
+  if (status === 'refunded') return 'refunded';
+  if (status === 'charged_back') return 'charged_back';
+  if (['rejected', 'cancelled'].includes(status)) return 'rejected';
   return 'pending';
 }

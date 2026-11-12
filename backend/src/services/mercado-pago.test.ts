@@ -45,6 +45,8 @@ test('maps Mercado Pago payment statuses without treating pending as paid', () =
   assert.equal(mapMercadoPagoPaymentStatus('approved'), 'approved');
   assert.equal(mapMercadoPagoPaymentStatus('in_process'), 'pending');
   assert.equal(mapMercadoPagoPaymentStatus('rejected'), 'rejected');
+  assert.equal(mapMercadoPagoPaymentStatus('refunded'), 'refunded');
+  assert.equal(mapMercadoPagoPaymentStatus('charged_back'), 'charged_back');
 });
 
 test('searches Mercado Pago by trip reference and validates the returned payment shape', async (context) => {

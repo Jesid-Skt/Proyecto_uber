@@ -25,7 +25,11 @@ const tripSchema = new Schema(
     driverEarnings: { type: Number, required: true, min: 0 },
     commissionRate: { type: Number, required: true },
     rating: { type: Number, min: 1, max: 5 },
-    paymentStatus: { type: String, enum: ['approved', 'pending', 'rejected', 'cash'], default: 'pending' },
+    paymentStatus: {
+      type: String,
+      enum: ['approved', 'pending', 'rejected', 'refunded', 'charged_back', 'cash'],
+      default: 'pending',
+    },
     mercadoPagoPreferenceId: { type: String },
     mercadoPagoCheckoutUrl: { type: String },
     mercadoPagoPaymentId: { type: String },

@@ -16,6 +16,7 @@ import {
   searchMercadoPagoPaymentsByExternalReference,
 } from '../services/mercado-pago.js';
 import { z } from 'zod';
+import type { PipelineStage } from 'mongoose';
 import { HttpError } from '../utils/http-error.js';
 import { tripIdSchema, tripRouteSchema } from '../utils/trip-validation.js';
 
@@ -24,6 +25,8 @@ const historyQuerySchema = z.object({
   from: z.iso.datetime().optional(),
   to: z.iso.datetime().optional(),
   paymentMethod: z.enum(['cash', 'mercadopago', 'stripe']).optional(),
+  offset: z.coerce.number().int().min(0).default(0),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
 }).strict().superRefine((query, context) => {
   if (query.from && query.to && new Date(query.from) > new Date(query.to)) {
     context.addIssue({
@@ -81,8 +84,140 @@ router.get('/history', async (request, response) => {
     ...(parsedQuery.data.paymentMethod
       ? { paymentMethod: parsedQuery.data.paymentMethod }
       : {}),
-  }).sort({ createdAt: -1 }).limit(100);
-  response.json({ trips: trips.map(serializeTrip) });
+  })
+    .sort({ createdAt: -1 })
+    .skip(parsedQuery.data.offset)
+    .limit(parsedQuery.data.limit + 1);
+  const hasMore = trips.length > parsedQuery.data.limit;
+  const page = hasMore ? trips.slice(0, parsedQuery.data.limit) : trips;
+  response.json({
+    trips: page.map(serializeTrip),
+    hasMore,
+    nextOffset: parsedQuery.data.offset + page.length,
+  });
+});
+
+router.get('/earnings', async (request, response) => {
+  const now = new Date();
+  const summaryStages = (): PipelineStage.FacetPipelineStage[] => [
+    {
+      $group: {
+        _id: null,
+        trips: { $sum: 1 },
+        fare: { $sum: '$fare' },
+        commission: { $sum: '$commission' },
+        tips: { $sum: '$tip' },
+        net: { $sum: '$driverEarnings' },
+        balance: {
+          $sum: {
+            $cond: [
+              { $eq: ['$paymentMethod', 'cash'] },
+              { $multiply: ['$commission', -1] },
+              '$driverEarnings',
+            ],
+          },
+        },
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        trips: 1,
+        fare: 1,
+        commission: 1,
+        tips: 1,
+        net: 1,
+        balance: 1,
+        average: {
+          $cond: [
+            { $gt: ['$trips', 0] },
+            { $round: [{ $divide: ['$net', '$trips'] }, 0] },
+            0,
+          ],
+        },
+      },
+    },
+  ];
+  const emptyPeriod = { trips: 0, fare: 0, commission: 0, tips: 0, net: 0, average: 0 };
+  const [result] = await Trip.aggregate<{
+    today: (typeof emptyPeriod & { balance: number })[];
+    week: (typeof emptyPeriod & { balance: number })[];
+    month: (typeof emptyPeriod & { balance: number })[];
+    allTime: (typeof emptyPeriod & { balance: number })[];
+  }>([
+    {
+      $match: {
+        driverId: new mongoose.Types.ObjectId(request.driverId),
+        status: 'paid',
+        paymentStatus: { $in: ['approved', 'cash'] },
+      },
+    },
+    { $addFields: { earningDate: { $ifNull: ['$completedAt', '$createdAt'] } } },
+    {
+      $facet: {
+        today: [
+          {
+            $match: {
+              $expr: {
+                $eq: [
+                  { $dateTrunc: { date: '$earningDate', unit: 'day', timezone: 'America/Bogota' } },
+                  { $dateTrunc: { date: now, unit: 'day', timezone: 'America/Bogota' } },
+                ],
+              },
+            },
+          },
+          ...summaryStages(),
+        ],
+        week: [
+          {
+            $match: {
+              $expr: {
+                $eq: [
+                  {
+                    $dateTrunc: {
+                      date: '$earningDate',
+                      unit: 'week',
+                      startOfWeek: 'monday',
+                      timezone: 'America/Bogota',
+                    },
+                  },
+                  {
+                    $dateTrunc: {
+                      date: now,
+                      unit: 'week',
+                      startOfWeek: 'monday',
+                      timezone: 'America/Bogota',
+                    },
+                  },
+                ],
+              },
+            },
+          },
+          ...summaryStages(),
+        ],
+        month: [
+          {
+            $match: {
+              $expr: {
+                $eq: [
+                  { $dateTrunc: { date: '$earningDate', unit: 'month', timezone: 'America/Bogota' } },
+                  { $dateTrunc: { date: now, unit: 'month', timezone: 'America/Bogota' } },
+                ],
+              },
+            },
+          },
+          ...summaryStages(),
+        ],
+        allTime: summaryStages(),
+      },
+    },
+  ]);
+  response.json({
+    today: result?.today[0] ?? emptyPeriod,
+    week: result?.week[0] ?? emptyPeriod,
+    month: result?.month[0] ?? emptyPeriod,
+    balance: result?.allTime[0]?.balance ?? 0,
+  });
 });
 
 router.post('/:tripId/route', async (request, response) => {
@@ -320,6 +455,31 @@ router.patch('/:tripId/complete', async (request, response) => {
       { $set: { status: 'paid' } },
       { new: true, runValidators: true },
     ) ?? trip;
+  }
+  response.json({ trip: serializeTrip(trip) });
+});
+
+router.patch('/:tripId/cancel', async (request, response) => {
+  const id = tripIdSchema.safeParse(request.params.tripId);
+  if (!id.success) {
+    throw new HttpError(400, 'El identificador del viaje no es válido.');
+  }
+  const trip = await Trip.findOneAndUpdate(
+    {
+      _id: new mongoose.Types.ObjectId(id.data),
+      driverId: request.driverId,
+      status: { $in: ['accepted', 'driver_arriving'] },
+      paymentStatus: { $ne: 'approved' },
+      mercadoPagoPreferenceId: { $exists: false },
+    },
+    { $set: { status: 'cancelled' } },
+    { new: true, runValidators: true },
+  );
+  if (!trip) {
+    throw new HttpError(
+      409,
+      'El viaje no se puede cancelar: ya inició, tiene un pago aprobado o un checkout activo.',
+    );
   }
   response.json({ trip: serializeTrip(trip) });
 });
