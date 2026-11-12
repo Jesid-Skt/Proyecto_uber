@@ -1,16 +1,15 @@
 import * as SecureStore from 'expo-secure-store';
 import React, { useEffect, useRef } from 'react';
-import { Alert } from 'react-native';
+import { Alert, PermissionsAndroid, Platform } from 'react-native';
 import {
   connectDriverRealtime,
   driverApi,
   type DriverProfile,
 } from '../services/api';
+import { DRIVER_SESSION_TOKEN_KEY as SESSION_TOKEN_KEY } from '../services/driver-session';
 import type { Trip } from '../types/domain';
 import { supportsNativeFirebase } from '../utils/native-firebase';
 import { mapTripResponse } from '../utils/trip-response';
-
-const SESSION_TOKEN_KEY = 'driver-session-token';
 
 export function useDriverRealtime(
   profile: DriverProfile | null,
@@ -19,6 +18,7 @@ export function useDriverRealtime(
   setActiveTrip: React.Dispatch<React.SetStateAction<Trip | null>>,
 ): void {
   const currentTripId = useRef<string | null>(null);
+  const permissionWarningShown = useRef(false);
 
   useEffect(() => {
     currentTripId.current = activeTripId;
@@ -57,10 +57,31 @@ export function useDriverRealtime(
       try {
         const messaging = await import('@react-native-firebase/messaging');
         const push = messaging.getMessaging();
-        const permission = await messaging.requestPermission(push);
-        const authorized = permission === messaging.AuthorizationStatus.AUTHORIZED
-          || permission === messaging.AuthorizationStatus.PROVISIONAL;
-        if (!authorized || !active) return;
+        let hasPermission = false;
+        if (Platform.OS === 'android') {
+          if (Number(Platform.Version) < 33) {
+            hasPermission = true;
+          } else {
+            const permission = await PermissionsAndroid.request(
+              PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
+            );
+            hasPermission = permission === PermissionsAndroid.RESULTS.GRANTED;
+          }
+        } else if (Platform.OS === 'ios') {
+          const permission = await messaging.requestPermission(push);
+          hasPermission = permission === messaging.AuthorizationStatus.AUTHORIZED
+            || permission === messaging.AuthorizationStatus.PROVISIONAL;
+        }
+        if (!hasPermission || !active) {
+          if (!hasPermission && active && !permissionWarningShown.current) {
+            permissionWarningShown.current = true;
+            Alert.alert(
+              'Notificaciones desactivadas',
+              'Activa las notificaciones de UberClone en los ajustes del dispositivo para recibir solicitudes de viaje.',
+            );
+          }
+          return;
+        }
         const pushToken = await messaging.getToken(push);
         await driverApi.registerPushToken(token, pushToken);
         unsubscribeToken = messaging.onTokenRefresh(push, (newToken) => {

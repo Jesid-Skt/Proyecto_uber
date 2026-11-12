@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { getRegistrationStepErrors } from './driver-registration.ts';
+import { clearRegistrationFieldError, getRegistrationStepErrors } from './driver-registration.ts';
 
 const now = new Date(2026, 10, 10);
 const validRegistration = {
@@ -88,4 +88,11 @@ test('requires current document images, future expiries, and terms acceptance', 
   assert.ok(errors.revisionExpiry);
   assert.ok(errors.mercadoPagoEmail);
   assert.ok(errors.termsAccepted);
+});
+
+test('clears a corrected server field error without retaining an empty error entry', () => {
+  assert.deepEqual(
+    clearRegistrationFieldError({ email: 'Correo duplicado.', phone: 'Número inválido.' }, 'email'),
+    { phone: 'Número inválido.' },
+  );
 });

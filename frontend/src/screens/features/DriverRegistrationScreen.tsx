@@ -1,3 +1,4 @@
+// AI-assisted: see docs/AI_LOG.md #11.
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
@@ -10,7 +11,11 @@ import { PRICING } from '../../config/pricing';
 import { useDriver } from '../../context/DriverContext';
 import { ApiError, appendImage } from '../../services/api';
 import { registrationStyles } from './registrationStyles';
-import { getRegistrationStepErrors, type RegistrationData } from '../../utils/driver-registration';
+import {
+  clearRegistrationFieldError,
+  getRegistrationStepErrors,
+  type RegistrationData,
+} from '../../utils/driver-registration';
 import { formatDateInput } from '../shared/formatters';
 
 function formatRegistrationDate(date: Date): string {
@@ -72,7 +77,7 @@ export function DriverRegistrationScreen() {
   };
   const update = (key: string, value: string) => {
     setData((current) => ({ ...current, [key]: value }));
-    setServerErrors((current) => ({ ...current, [key]: '' }));
+    setServerErrors((current) => clearRegistrationFieldError(current, key));
     setMediaErrors((current) => ({ ...current, [key]: '' }));
     setMessage(null);
   };
@@ -218,6 +223,7 @@ export function DriverRegistrationScreen() {
       maxLength?: number;
       secureTextEntry?: boolean;
       autoCapitalize?: 'none' | 'sentences';
+      helperText?: string;
     },
   ) => (
     <View style={registrationStyles.formField}>
@@ -230,6 +236,7 @@ export function DriverRegistrationScreen() {
         keyboardType={options?.keyboardType}
         maxLength={options?.maxLength}
         secureTextEntry={options?.secureTextEntry}
+        helperText={options?.helperText}
         autoCapitalize={options?.upper ? 'characters' : options?.autoCapitalize ?? 'sentences'}
         autoCorrect={false}
       />
@@ -253,9 +260,10 @@ export function DriverRegistrationScreen() {
       ) : (
         <View style={registrationStyles.photoPlaceholder}>
           <Text style={registrationStyles.photoGlyph}>＋</Text>
-          <Text style={registrationStyles.photoHint}>Agrega una imagen clara (máximo 5 MB)</Text>
+          <Text style={registrationStyles.photoHint}>Agrega una imagen clara y legible.</Text>
         </View>
       )}
+      <Text style={registrationStyles.helperText}>Imagen JPEG, PNG o WebP; máximo 5 MB.</Text>
       <View style={commonStyles.row}>
         <View style={registrationStyles.photoButton}>
           <Button title="Elegir de galería" variant="secondary" onPress={() => void pickPhoto(field, false)} />
@@ -267,7 +275,7 @@ export function DriverRegistrationScreen() {
       {fieldErrors[field] ? <Text style={registrationStyles.error}>{fieldErrors[field]}</Text> : null}
     </View>
   );
-  const dropdown = (key: string, label: string, options: string[]) => {
+  const dropdown = (key: string, label: string, options: string[], helperText?: string) => {
     const expanded = openDropdown === key;
     return (
       <View style={registrationStyles.formField}>
@@ -324,11 +332,12 @@ export function DriverRegistrationScreen() {
             ))}
           </View>
         ) : null}
+        {helperText ? <Text style={registrationStyles.helperText}>{helperText}</Text> : null}
         {fieldErrors[key] ? <Text style={registrationStyles.error}>{fieldErrors[key]}</Text> : null}
       </View>
     );
   };
-  const dateFieldControl = (key: string, label: string) => (
+  const dateFieldControl = (key: string, label: string, helperText: string) => (
     <View style={registrationStyles.formField}>
       <Text style={registrationStyles.fieldLabel}>
         {label}<Text style={registrationStyles.requiredMark}> *</Text>
@@ -355,6 +364,7 @@ export function DriverRegistrationScreen() {
         </Text>
         <Text style={registrationStyles.calendarGlyph}>▦</Text>
       </Pressable>
+      <Text style={registrationStyles.helperText}>{helperText}</Text>
       {fieldErrors[key] ? <Text style={registrationStyles.error}>{fieldErrors[key]}</Text> : null}
     </View>
   );
@@ -432,22 +442,35 @@ export function DriverRegistrationScreen() {
               <Text style={registrationStyles.formSubtitle}>Usaremos esta información para verificar tu identidad.</Text>
             </View>
             {photo('profilePhoto', 'Foto de perfil')}
-            {section('fullName', 'Nombre completo', { maxLength: 50 })}
-            {section('idNumber', 'Documento de identidad', { keyboardType: 'numeric', maxLength: 10 })}
-            {section('phone', 'Número de celular', { keyboardType: 'phone-pad', maxLength: 10 })}
-            {dateFieldControl('birthDate', 'Fecha de nacimiento')}
-            {dropdown('gender', 'Género', ['Femenino', 'Masculino', 'Otro'])}
+            {section('fullName', 'Nombre completo', {
+              maxLength: 50,
+              helperText: 'De 1 a 50 caracteres; solo letras y espacios.',
+            })}
+            {section('idNumber', 'Documento de identidad', {
+              keyboardType: 'numeric',
+              maxLength: 10,
+              helperText: 'De 6 a 10 dígitos numéricos, sin puntos ni espacios.',
+            })}
+            {section('phone', 'Número de celular', {
+              keyboardType: 'phone-pad',
+              maxLength: 10,
+              helperText: 'Exactamente 10 dígitos, sin indicativo ni espacios.',
+            })}
+            {dateFieldControl('birthDate', 'Fecha de nacimiento', 'Debes tener 18 años o más.')}
+            {dropdown('gender', 'Género', ['Femenino', 'Masculino', 'Otro'], 'Selecciona una opción.')}
             {section('email', 'Correo electrónico', {
               keyboardType: 'email-address',
               maxLength: 254,
               autoCapitalize: 'none',
+              helperText: 'Máximo 254 caracteres; escribe una dirección de correo válida.',
             })}
-            {section('password', 'Contraseña (10 caracteres, una letra y un número)', {
+            {section('password', 'Contraseña', {
               maxLength: 72,
               secureTextEntry: true,
               autoCapitalize: 'none',
+              helperText: 'De 10 a 72 caracteres; incluye al menos una letra y un número.',
             })}
-            {dropdown('language', 'Idioma', ['Español', 'Inglés'])}
+            {dropdown('language', 'Idioma', ['Español', 'Inglés'], 'Selecciona el idioma de la aplicación.')}
           </>
         ) : null}
         {step === 1 ? (
@@ -456,13 +479,27 @@ export function DriverRegistrationScreen() {
               <Text style={registrationStyles.formTitle}>Registra tu vehículo</Text>
               <Text style={registrationStyles.formSubtitle}>Elige una categoría disponible para los viajes.</Text>
             </View>
-            {dropdown('category', 'Categoría', ['Económico', 'XL', 'Premium'])}
-            {section('plate', 'Placa (ABC123)', { upper: true, maxLength: 6 })}
-            {section('make', 'Marca', { maxLength: 30 })}
-            {section('model', 'Modelo', { maxLength: 30 })}
-            {section('year', 'Año', { keyboardType: 'numeric', maxLength: 4 })}
-            {dropdown('color', 'Color', ['Blanco', 'Negro', 'Gris', 'Rojo', 'Azul'])}
-            {section('capacity', 'Capacidad de pasajeros', { keyboardType: 'numeric', maxLength: 2 })}
+            {dropdown('category', 'Categoría', ['Económico', 'XL', 'Premium'], 'Selecciona la categoría de servicio del vehículo.')}
+            {section('plate', 'Placa', {
+              upper: true,
+              maxLength: 6,
+              helperText: '6 caracteres: 3 letras y 3 números (ABC123). Se convierte a mayúsculas.',
+            })}
+            {section('make', 'Marca', { maxLength: 30, helperText: 'De 1 a 30 caracteres.' })}
+            {section('model', 'Modelo', { maxLength: 30, helperText: 'De 1 a 30 caracteres.' })}
+            {section('year', 'Año', {
+              keyboardType: 'numeric',
+              maxLength: 4,
+              helperText: `4 dígitos; desde 1950 hasta ${new Date().getFullYear()}.`,
+            })}
+            {dropdown('color', 'Color', ['Blanco', 'Negro', 'Gris', 'Rojo', 'Azul'], 'Selecciona el color del vehículo.')}
+            {section('capacity', 'Capacidad de pasajeros', {
+              keyboardType: 'numeric',
+              maxLength: 2,
+              helperText: data.category === 'XL'
+                ? 'De 6 a 20 pasajeros para categoría XL.'
+                : 'De 1 a 20 pasajeros.',
+            })}
             {photo('vehiclePhoto', 'Foto del vehículo con la placa visible')}
           </>
         ) : null}
@@ -472,21 +509,28 @@ export function DriverRegistrationScreen() {
               <Text style={registrationStyles.formTitle}>Documentos y pagos</Text>
               <Text style={registrationStyles.formSubtitle}>Las fotos deben ser legibles y las fechas estar vigentes.</Text>
             </View>
-            {section('licenseNumber', 'Número de licencia', { maxLength: 40 })}
+            {section('licenseNumber', 'Número de licencia', {
+              maxLength: 40,
+              helperText: 'De 1 a 40 caracteres; escríbelo como aparece en la licencia.',
+            })}
             {photo('licensePhoto', 'Foto de licencia de conducción')}
-            {dateFieldControl('licenseExpiry', 'Vencimiento de licencia')}
+            {dateFieldControl('licenseExpiry', 'Vencimiento de licencia', 'Selecciona una fecha posterior a hoy.')}
             {photo('soatPhoto', 'Foto del SOAT')}
-            {dateFieldControl('soatExpiry', 'Vencimiento del SOAT')}
+            {dateFieldControl('soatExpiry', 'Vencimiento del SOAT', 'Selecciona una fecha posterior a hoy.')}
             {data.year && Number(data.year) <= new Date().getFullYear() - 6 ? (
               <>
+                <Text style={registrationStyles.helperText}>
+                  Obligatoria para vehículos modelo {new Date().getFullYear() - 6} o anteriores.
+                </Text>
                 {photo('revisionPhoto', 'Foto de revisión técnico-mecánica')}
-                {dateFieldControl('revisionExpiry', 'Vencimiento de revisión')}
+                {dateFieldControl('revisionExpiry', 'Vencimiento de revisión', 'Selecciona una fecha posterior a hoy.')}
               </>
             ) : null}
             {section('mercadoPagoEmail', 'Correo de cuenta Mercado Pago', {
               keyboardType: 'email-address',
               maxLength: 254,
               autoCapitalize: 'none',
+              helperText: 'Máximo 254 caracteres; debe ser un correo válido asociado a Mercado Pago.',
             })}
             <Pressable
               accessibilityRole="checkbox"

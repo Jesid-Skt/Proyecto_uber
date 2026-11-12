@@ -57,6 +57,22 @@ export type DriverProfileUpdate = {
   };
 };
 
+export type EarningsPeriod = {
+  trips: number;
+  fare: number;
+  commission: number;
+  tips: number;
+  net: number;
+  average: number;
+};
+
+export type EarningsSummary = {
+  today: EarningsPeriod;
+  week: EarningsPeriod;
+  month: EarningsPeriod;
+  balance: number;
+};
+
 export type DriverDocumentKind = 'profile' | 'vehicle' | 'license' | 'soat' | 'revision';
 
 export type TripResponse = Omit<Trip, 'createdAt' | 'expiresAt' | 'completedAt'> & {
@@ -68,11 +84,17 @@ export type TripResponse = Omit<Trip, 'createdAt' | 'expiresAt' | 'completedAt'>
 type AuthResponse = { token: string; driver: DriverProfile };
 type ProfileResponse = { driver: DriverProfile };
 type TripResult = { trip: TripResponse | null };
-type TripListResponse = { trips: TripResponse[] };
+type TripListResponse = {
+  trips: TripResponse[];
+  hasMore: boolean;
+  nextOffset: number;
+};
 export type TripHistoryFilters = {
   from?: string;
   to?: string;
   paymentMethod?: PaymentMethod;
+  offset?: number;
+  limit?: number;
 };
 
 export class ApiError extends Error {
@@ -237,6 +259,13 @@ export const driverApi = {
       token,
     );
   },
+  cancelTrip(token: string, tripId: string) {
+    return request<{ trip: TripResponse }>(
+      `/api/drivers/me/trips/${encodeURIComponent(tripId)}/cancel`,
+      { method: 'PATCH' },
+      token,
+    );
+  },
   confirmCashPayment(token: string, tripId: string) {
     return request<{ trip: TripResponse }>(
       `/api/drivers/me/trips/${encodeURIComponent(tripId)}/cash-payment`,
@@ -250,6 +279,9 @@ export const driverApi = {
     );
     const suffix = query.size ? `?${query.toString()}` : '';
     return request<TripListResponse>(`/api/drivers/me/trips/history${suffix}`, {}, token);
+  },
+  getEarningsSummary(token: string) {
+    return request<EarningsSummary>('/api/drivers/me/trips/earnings', {}, token);
   },
   createMercadoPagoCheckout(token: string, tripId: string) {
     return request<{ tripId: string; preferenceId: string; checkoutUrl: string }>(

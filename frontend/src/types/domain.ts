@@ -5,7 +5,13 @@ export type { DriverProfile } from '../services/api';
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected';
 
 export type PaymentMethod = 'mercadopago' | 'stripe' | 'cash';
-export type PaymentStatus = 'approved' | 'pending' | 'rejected' | 'cash';
+export type PaymentStatus =
+  | 'approved'
+  | 'pending'
+  | 'rejected'
+  | 'refunded'
+  | 'charged_back'
+  | 'cash';
 export type TripStatus =
   | 'requested'
   | 'accepted'

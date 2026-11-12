@@ -15,8 +15,15 @@ import {
   type DriverProfile,
   type DriverProfileUpdate,
   type DriverDocumentKind,
+  type EarningsSummary,
   type TripHistoryFilters,
 } from '../services/api';
+import {
+  requestDriverBackgroundLocationPermissions,
+  startDriverBackgroundLocationUpdates,
+  stopDriverBackgroundLocationUpdates,
+} from '../services/driver-background-location';
+import { DRIVER_SESSION_TOKEN_KEY as SESSION_TOKEN_KEY } from '../services/driver-session';
 import type { Trip, TripRoute } from '../types/domain';
 import { useDriverRealtime } from '../hooks/useDriverRealtime';
 import { supportsNativeFirebase } from '../utils/native-firebase';
@@ -30,6 +37,7 @@ type DriverContextValue = {
   sessionError: string | null;
   available: boolean;
   trips: Trip[];
+  earningsSummary: EarningsSummary | null;
   activeRequest: ActiveRequest | null;
   activeTrip: Trip | null;
   login: (email: string, password: string) => Promise<void>;
@@ -43,7 +51,11 @@ type DriverContextValue = {
   updateLocation: (location: { lat: number; lng: number }) => Promise<void>;
   setActiveRequest: (request: ActiveRequest | null) => void;
   refreshTripRequest: () => Promise<void>;
-  refreshTripHistory: (filters?: TripHistoryFilters) => Promise<void>;
+  refreshTripHistory: (filters?: TripHistoryFilters) => Promise<{
+    hasMore: boolean;
+    nextOffset: number;
+  }>;
+  refreshEarningsSummary: () => Promise<EarningsSummary>;
   getTripDetails: (tripId: string) => Promise<Trip>;
   refreshActiveTrip: () => Promise<Trip>;
   syncMercadoPagoPayment: () => Promise<Trip>;
@@ -55,12 +67,12 @@ type DriverContextValue = {
   rejectRequest: () => Promise<void>;
   updateActiveTrip: (status: 'driver_arriving' | 'in_progress') => Promise<Trip>;
   completeActiveTrip: () => Promise<Trip>;
+  cancelActiveTrip: () => Promise<void>;
   confirmCashPayment: () => Promise<Trip>;
   createPaymentCheckout: () => Promise<string>;
   setLanguage: (language: DriverProfile['language']) => Promise<void>;
 };
 
-const SESSION_TOKEN_KEY = 'driver-session-token';
 const DriverContext = createContext<DriverContextValue | null>(null);
 
 export function DriverProvider({ children }: React.PropsWithChildren) {
@@ -70,6 +82,7 @@ export function DriverProvider({ children }: React.PropsWithChildren) {
   const [sessionVersion, setSessionVersion] = useState(0);
   const [available, setAvailableState] = useState(false);
   const [trips, setTrips] = useState<Trip[]>([]);
+  const [earningsSummary, setEarningsSummary] = useState<EarningsSummary | null>(null);
   const [activeRequest, setActiveRequest] = useState<ActiveRequest | null>(null);
   const [activeTrip, setActiveTrip] = useState<Trip | null>(null);
 
@@ -80,23 +93,53 @@ export function DriverProvider({ children }: React.PropsWithChildren) {
         const token = await SecureStore.getItemAsync(SESSION_TOKEN_KEY);
         if (!active) return;
         if (!token) {
+          await stopDriverBackgroundLocationUpdates();
           setProfile(null);
+          setAvailableState(false);
           setSessionError(null);
           return;
         }
+        await SecureStore.setItemAsync(SESSION_TOKEN_KEY, token, {
+          keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
+        });
         const response = await driverApi.getProfile(token);
         if (!active) return;
         setProfile(response.driver);
-        setAvailableState(
-          response.driver.approvalStatus === 'approved' && response.driver.available,
-        );
+        const shouldRestoreAvailability = response.driver.approvalStatus === 'approved'
+          && response.driver.available;
+        let restoredAvailability = false;
+        let availabilityError: string | null = null;
+        if (shouldRestoreAvailability) {
+          try {
+            await requestDriverBackgroundLocationPermissions();
+            await startDriverBackgroundLocationUpdates();
+            restoredAvailability = true;
+          } catch (locationError) {
+            availabilityError = locationError instanceof Error
+              ? locationError.message
+              : 'No se pudo reanudar la ubicación en segundo plano.';
+            try {
+              const offline = await driverApi.setAvailability(token, false);
+              setProfile(offline.driver);
+            } catch (availabilityUpdateError) {
+              console.error('No se pudo desconectar al restaurar la sesión.', availabilityUpdateError);
+            }
+            await stopDriverBackgroundLocationUpdates().catch((stopError: unknown) => {
+              console.error('No se pudo detener la ubicación al restaurar la sesión.', stopError);
+            });
+          }
+        } else {
+          await stopDriverBackgroundLocationUpdates();
+        }
+        setAvailableState(restoredAvailability);
         const tripResponse = await driverApi.getActiveTrip(token);
         if (!active) return;
         setActiveTrip(tripResponse.trip ? mapTripResponse(tripResponse.trip) : null);
-        setSessionError(null);
+        setSessionError(availabilityError);
       } catch (error) {
         if (!active) return;
         if (error instanceof ApiError && error.status === 401) {
+          await stopDriverBackgroundLocationUpdates();
           await SecureStore.deleteItemAsync(SESSION_TOKEN_KEY);
           if (!active) return;
           setProfile(null);
@@ -118,11 +161,15 @@ export function DriverProvider({ children }: React.PropsWithChildren) {
     token: string;
     driver: DriverProfile;
   }) => {
-    await SecureStore.setItemAsync(SESSION_TOKEN_KEY, response.token);
-    setProfile(response.driver);
-    setAvailableState(
-      response.driver.approvalStatus === 'approved' && response.driver.available,
-    );
+    await stopDriverBackgroundLocationUpdates();
+    const driver = response.driver.available
+      ? (await driverApi.setAvailability(response.token, false)).driver
+      : response.driver;
+    await SecureStore.setItemAsync(SESSION_TOKEN_KEY, response.token, {
+      keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
+    });
+    setProfile(driver);
+    setAvailableState(false);
     setSessionError(null);
   }, []);
 
@@ -150,12 +197,14 @@ export function DriverProvider({ children }: React.PropsWithChildren) {
     if (token && available) {
       await driverApi.setAvailability(token, false);
     }
+    await stopDriverBackgroundLocationUpdates();
     await SecureStore.deleteItemAsync(SESSION_TOKEN_KEY);
     setProfile(null);
     setAvailableState(false);
     setActiveTrip(null);
     setActiveRequest(null);
     setTrips([]);
+    setEarningsSummary(null);
   }, [available]);
 
   const retrySession = useCallback(async () => {
@@ -170,9 +219,10 @@ export function DriverProvider({ children }: React.PropsWithChildren) {
     }
     const response = await driverApi.getProfile(token);
     setProfile(response.driver);
-    setAvailableState(
-      response.driver.approvalStatus === 'approved' && response.driver.available,
-    );
+    const shouldBeAvailable = response.driver.approvalStatus === 'approved'
+      && response.driver.available;
+    if (!shouldBeAvailable) await stopDriverBackgroundLocationUpdates();
+    setAvailableState(shouldBeAvailable);
     return response.driver;
   }, []);
 
@@ -183,9 +233,10 @@ export function DriverProvider({ children }: React.PropsWithChildren) {
     }
     const response = await driverApi.updateProfile(token, update);
     setProfile(response.driver);
-    if (response.driver.approvalStatus !== 'approved') {
-      setAvailableState(false);
-    }
+    const shouldBeAvailable = response.driver.approvalStatus === 'approved'
+      && response.driver.available;
+    if (!shouldBeAvailable) await stopDriverBackgroundLocationUpdates();
+    setAvailableState(shouldBeAvailable);
   }, []);
 
   const uploadDocument = useCallback(async (kind: DriverDocumentKind, uri: string) => {
@@ -197,6 +248,12 @@ export function DriverProvider({ children }: React.PropsWithChildren) {
     await appendImage(form, 'document', uri);
     const response = await driverApi.uploadDriverDocument(token, kind, form);
     setProfile(response.driver);
+    const shouldBeAvailable = response.driver.approvalStatus === 'approved'
+      && response.driver.available;
+    if (!shouldBeAvailable) {
+      await stopDriverBackgroundLocationUpdates();
+      setAvailableState(false);
+    }
   }, []);
 
   const setAvailable = useCallback(async (value: boolean) => {
@@ -207,10 +264,46 @@ export function DriverProvider({ children }: React.PropsWithChildren) {
     if (!token) {
       throw new ApiError('Inicia sesión para cambiar la disponibilidad.', 401);
     }
-    const response = await driverApi.setAvailability(token, value);
+
+    if (value) {
+      await requestDriverBackgroundLocationPermissions();
+    } else {
+      await stopDriverBackgroundLocationUpdates();
+    }
+
+    let response: Awaited<ReturnType<typeof driverApi.setAvailability>>;
+    try {
+      response = await driverApi.setAvailability(token, value);
+    } catch (error) {
+      if (!value && available) {
+        await startDriverBackgroundLocationUpdates().catch((restartError: unknown) => {
+          console.error('No se pudo reanudar la ubicación tras fallar la desconexión.', restartError);
+        });
+      }
+      throw error;
+    }
+
+    if (response.driver.available && value) {
+      try {
+        await startDriverBackgroundLocationUpdates();
+      } catch (locationError) {
+        await stopDriverBackgroundLocationUpdates().catch((stopError: unknown) => {
+          console.error('No se pudo detener la ubicación tras fallar su inicio.', stopError);
+        });
+        try {
+          const offline = await driverApi.setAvailability(token, false);
+          setProfile(offline.driver);
+          setAvailableState(false);
+        } catch (rollbackError) {
+          console.error('No se pudo desactivar la disponibilidad tras fallar la ubicación.', rollbackError);
+        }
+        throw locationError;
+      }
+    }
+
     setProfile(response.driver);
     setAvailableState(response.driver.available);
-  }, [profile]);
+  }, [available, profile]);
 
   const updateLocation = useCallback(async (location: { lat: number; lng: number }) => {
     const token = await SecureStore.getItemAsync(SESSION_TOKEN_KEY);
@@ -238,7 +331,21 @@ export function DriverProvider({ children }: React.PropsWithChildren) {
       throw new ApiError('Inicia sesión para consultar el historial.', 401);
     }
     const response = await driverApi.getTripHistory(token, filters);
-    setTrips(response.trips.map(mapTripResponse));
+    const page = response.trips.map(mapTripResponse);
+    setTrips((current) => filters?.offset
+      ? [...current, ...page.filter((trip) => !current.some((item) => item.id === trip.id))]
+      : page);
+    return { hasMore: response.hasMore, nextOffset: response.nextOffset };
+  }, []);
+
+  const refreshEarningsSummary = useCallback(async () => {
+    const token = await SecureStore.getItemAsync(SESSION_TOKEN_KEY);
+    if (!token) {
+      throw new ApiError('Inicia sesión para consultar las ganancias.', 401);
+    }
+    const summary = await driverApi.getEarningsSummary(token);
+    setEarningsSummary(summary);
+    return summary;
   }, []);
 
   const getTripDetails = useCallback(async (tripId: string) => {
@@ -349,6 +456,19 @@ export function DriverProvider({ children }: React.PropsWithChildren) {
     return trip;
   }, [activeTrip]);
 
+  const cancelActiveTrip = useCallback(async () => {
+    if (!activeTrip) {
+      throw new Error('No hay un viaje activo para cancelar.');
+    }
+    const token = await SecureStore.getItemAsync(SESSION_TOKEN_KEY);
+    if (!token) {
+      throw new ApiError('Inicia sesión para cancelar el viaje.', 401);
+    }
+    await driverApi.cancelTrip(token, activeTrip.id);
+    setActiveTrip(null);
+    setActiveRequest(null);
+  }, [activeTrip]);
+
   const confirmCashPayment = useCallback(async () => {
     if (!activeTrip) {
       throw new Error('No hay un viaje pendiente de pago.');
@@ -389,6 +509,7 @@ export function DriverProvider({ children }: React.PropsWithChildren) {
       sessionError,
       available,
       trips,
+      earningsSummary,
       activeRequest,
       activeTrip,
       login,
@@ -403,6 +524,7 @@ export function DriverProvider({ children }: React.PropsWithChildren) {
       setActiveRequest,
       refreshTripRequest,
       refreshTripHistory,
+      refreshEarningsSummary,
       getTripDetails,
       refreshActiveTrip,
       syncMercadoPagoPayment,
@@ -411,6 +533,7 @@ export function DriverProvider({ children }: React.PropsWithChildren) {
       rejectRequest,
       updateActiveTrip,
       completeActiveTrip,
+      cancelActiveTrip,
       confirmCashPayment,
       createPaymentCheckout,
       setLanguage,
@@ -421,6 +544,7 @@ export function DriverProvider({ children }: React.PropsWithChildren) {
       sessionError,
       available,
       trips,
+      earningsSummary,
       activeRequest,
       activeTrip,
       login,
@@ -434,6 +558,7 @@ export function DriverProvider({ children }: React.PropsWithChildren) {
       updateLocation,
       refreshTripRequest,
       refreshTripHistory,
+      refreshEarningsSummary,
       getTripDetails,
       refreshActiveTrip,
       syncMercadoPagoPayment,
@@ -442,6 +567,7 @@ export function DriverProvider({ children }: React.PropsWithChildren) {
       rejectRequest,
       updateActiveTrip,
       completeActiveTrip,
+      cancelActiveTrip,
       confirmCashPayment,
       createPaymentCheckout,
       setLanguage,

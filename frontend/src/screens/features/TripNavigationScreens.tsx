@@ -6,7 +6,7 @@ import MapView, { Marker, Polyline } from 'react-native-maps';
 import Animated, { FadeInDown, SlideInUp } from 'react-native-reanimated';
 import { SlideToConfirmButton } from '../../components/SlideToConfirmButton';
 import { tripPalette } from '../../components/trip-flow-theme';
-import { Card, Page } from '../../components/ui';
+import { Button, Card, Page } from '../../components/ui';
 import { formatCop } from '../../config/pricing';
 import { useDriver } from '../../context/DriverContext';
 import { useDriverLocation } from '../../hooks/useDriverLocation';
@@ -163,7 +163,7 @@ function routeSummary(route: TripRoute): string {
 
 export function PickupNavigationScreen() {
   const router = useRouter();
-  const { activeTrip, updateActiveTrip } = useDriver();
+  const { activeTrip, updateActiveTrip, cancelActiveTrip } = useDriver();
   const { coords, error: locationError, permissionError } = useTripLocation();
   const navigation = useTripNavigationRoute(activeTrip?.id ?? '', 'pickup', coords);
   const [loading, setLoading] = useState(false);
@@ -188,6 +188,31 @@ export function PickupNavigationScreen() {
     } finally {
       setLoading(false);
     }
+  };
+  const cancel = () => {
+    Alert.alert(
+      'Cancelar viaje',
+      '¿Confirmas que no puedes completar este viaje?',
+      [
+        { text: 'Seguir con el viaje', style: 'cancel' },
+        {
+          text: 'Cancelar viaje',
+          style: 'destructive',
+          onPress: () => {
+            setLoading(true);
+            setError(null);
+            void cancelActiveTrip()
+              .then(() => router.replace('/home'))
+              .catch((cancelError: unknown) => {
+                setError(cancelError instanceof Error
+                  ? cancelError.message
+                  : 'No se pudo cancelar el viaje.');
+              })
+              .finally(() => setLoading(false));
+          },
+        },
+      ],
+    );
   };
   return (
     <Page backgroundColor={tripPalette.background}>
@@ -244,6 +269,12 @@ export function PickupNavigationScreen() {
                 ? 'Iniciar camino a recogida'
                 : 'Pasajero a bordo'}
             onConfirm={() => void confirmPickup()}
+            disabled={loading}
+          />
+          <Button
+            title={loading ? 'Procesando…' : 'Cancelar viaje'}
+            variant="secondary"
+            onPress={cancel}
             disabled={loading}
           />
         </Card>

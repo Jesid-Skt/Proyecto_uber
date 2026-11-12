@@ -17,15 +17,15 @@ function MetricCard({ title, value, caption }: { title: string; value: string; c
 }
 
 export function EarningsScreen() {
-  const { trips, refreshTripHistory } = useDriver();
+  const { trips, earningsSummary, refreshEarningsSummary } = useDriver();
   const isFocused = useIsFocused();
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const { today, week, month, balance } = useEarnings(trips);
+  const { today, week, month, balance } = useEarnings(trips, earningsSummary);
   useEffect(() => {
     if (!isFocused) return;
     let active = true;
-    void refreshTripHistory()
+    void refreshEarningsSummary()
       .then(() => {
         if (active) setHistoryError(null);
       })
@@ -40,7 +40,7 @@ export function EarningsScreen() {
     return () => {
       active = false;
     };
-  }, [isFocused, refreshTripHistory]);
+  }, [isFocused, refreshEarningsSummary]);
   return (
     <Page>
       <PageHeading title="Ganancias" subtitle="Resumen basado en tus viajes pagados." />
@@ -51,7 +51,7 @@ export function EarningsScreen() {
           <Button
             title="Reintentar"
             variant="secondary"
-            onPress={() => void refreshTripHistory().catch((error: unknown) => {
+            onPress={() => void refreshEarningsSummary().catch((error: unknown) => {
               setHistoryError(error instanceof Error ? error.message : 'No se pudieron cargar las ganancias.');
             })}
           />

@@ -1,7 +1,8 @@
-// AI-assisted: see docs/AI_LOG.md #1, #3, and #7.
+// AI-assisted: see docs/AI_LOG.md #1, #3, #7, and #10.
 import { Redirect } from 'expo-router';
 import { Drawer } from 'expo-router/drawer';
 import React from 'react';
+import { Platform } from 'react-native';
 import { FloatingMenuButton } from '../../components/FloatingMenuButton';
 import { tripPalette } from '../../components/trip-flow-theme';
 import { useDriver } from '../../context/DriverContext';
@@ -15,7 +16,7 @@ export default function DrawerLayout() {
       headerStyle: { backgroundColor: tripPalette.background },
       headerTintColor: tripPalette.text,
       headerTitleStyle: { color: tripPalette.text, fontWeight: '700' },
-      statusBarStyle: 'light',
+      ...(Platform.OS === 'ios' ? {} : { statusBarStyle: 'light' as const }),
       headerLeft: () => (
         <FloatingMenuButton onPress={() => navigation.toggleDrawer()} />
       ),

@@ -134,6 +134,8 @@ export function TripPaymentScreen() {
                 pending: 'Pendiente',
                 approved: 'Aprobado por Mercado Pago',
                 rejected: 'Rechazado',
+                refunded: 'Reembolsado',
+                charged_back: 'Contracargo',
                 cash: 'Efectivo recibido',
               }[activeTrip.paymentStatus]}
             </Text>
@@ -253,11 +255,21 @@ export function TripSummaryScreen() {
       </Page>
     );
   }
-  if (activeTrip.status !== 'paid') {
+  if (
+    activeTrip.status !== 'paid'
+    || !['approved', 'cash'].includes(activeTrip.paymentStatus)
+  ) {
     return (
       <Page>
-        <PageHeading title="El pago aún no está confirmado." subtitle="El resumen aparecerá cuando el backend confirme el pago." />
-        <Button title="Volver al cobro" onPress={() => router.replace('/trip-payment')} />
+        <PageHeading
+          title={activeTrip.paymentStatus === 'refunded' || activeTrip.paymentStatus === 'charged_back'
+            ? 'El pago fue reembolsado o disputado.'
+            : 'El pago aún no está confirmado.'}
+          subtitle="El resumen solo se considera pagado cuando el backend confirma el pago."
+        />
+        {activeTrip.paymentStatus === 'pending' || activeTrip.paymentStatus === 'rejected' ? (
+          <Button title="Volver al cobro" onPress={() => router.replace('/trip-payment')} />
+        ) : null}
       </Page>
     );
   }

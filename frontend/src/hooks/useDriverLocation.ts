@@ -50,6 +50,7 @@ export function useDriverLocation(
           accuracy: Location.Accuracy.Balanced,
         });
         await reportLocation(current.coords);
+        if (!active || !onLocation) return;
         const watcher = await Location.watchPositionAsync(
           {
             accuracy: Location.Accuracy.Balanced,

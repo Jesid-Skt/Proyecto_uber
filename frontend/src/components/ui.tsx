@@ -1,4 +1,4 @@
-// AI-assisted: see docs/AI_LOG.md #1.
+// AI-assisted: see docs/AI_LOG.md #1 and #11.
 import React from 'react';
 import {
   Pressable,
@@ -106,9 +106,15 @@ export function Button({
 export function Field({
   label,
   error,
+  helperText,
   required = false,
   ...props
-}: TextInputProps & { label: string; error?: string; required?: boolean }) {
+}: TextInputProps & {
+  label: string;
+  error?: string;
+  helperText?: string;
+  required?: boolean;
+}) {
   return (
     <View style={styles.field}>
       <Text style={styles.label}>
@@ -120,6 +126,7 @@ export function Field({
         placeholderTextColor={colors.placeholder}
         style={[styles.input, props.style]}
       />
+      {helperText ? <Text style={styles.helperText}>{helperText}</Text> : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
     </View>
   );
@@ -257,6 +264,7 @@ const styles = StyleSheet.create({
     color: colors.ink,
     backgroundColor: colors.surface,
   },
+  helperText: { color: colors.muted, fontSize: typography.caption, lineHeight: typography.lineCaption },
   error: { color: colors.danger, fontSize: typography.caption },
   body: { color: colors.ink, fontSize: typography.label, lineHeight: typography.lineBody },
   muted: { color: colors.muted, fontSize: typography.caption, lineHeight: typography.lineCaption },

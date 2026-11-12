@@ -1,15 +1,9 @@
 // AI-assisted: see docs/AI_LOG.md #1.
 import { useEffect, useMemo, useState } from 'react';
+import type { EarningsPeriod, EarningsSummary } from '../services/api';
 import type { Trip } from '../types/domain';
 
-export type EarningsPeriod = {
-  trips: number;
-  fare: number;
-  commission: number;
-  tips: number;
-  net: number;
-  average: number;
-};
+export type { EarningsPeriod };
 
 function isSameDay(left: Date, right: Date): boolean {
   return left.getFullYear() === right.getFullYear() &&
@@ -25,7 +19,7 @@ function isSameWeek(date: Date, now: Date): boolean {
   return date >= startOfWeek;
 }
 
-export function useEarnings(trips: Trip[]) {
+export function useEarnings(trips: Trip[], completeSummary?: EarningsSummary | null) {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
     const timerId = setInterval(() => setNow(new Date()), 60_000);
@@ -33,7 +27,10 @@ export function useEarnings(trips: Trip[]) {
   }, []);
 
   return useMemo(() => {
-    const paidTrips = trips.filter((trip) => trip.status === 'paid');
+    const paidTrips = trips.filter(
+      (trip) => trip.status === 'paid'
+        && (trip.paymentStatus === 'approved' || trip.paymentStatus === 'cash'),
+    );
     const summarize = (items: Trip[]): EarningsPeriod => {
       const fare = items.reduce((sum, trip) => sum + trip.fare, 0);
       const commission = items.reduce((sum, trip) => sum + trip.commission, 0);
@@ -49,7 +46,7 @@ export function useEarnings(trips: Trip[]) {
       };
     };
 
-    return {
+    const localSummary: EarningsSummary = {
       today: summarize(
         paidTrips.filter((trip) => isSameDay(trip.completedAt ?? trip.createdAt, now)),
       ),
@@ -71,5 +68,6 @@ export function useEarnings(trips: Trip[]) {
         0,
       ),
     };
-  }, [trips, now]);
+    return completeSummary ?? localSummary;
+  }, [completeSummary, trips, now]);
 }

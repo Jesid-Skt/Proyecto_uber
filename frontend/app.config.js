@@ -36,8 +36,10 @@ module.exports = ({ config }) => {
   if (hasAndroidFirebaseConfig && hasIosFirebaseConfig) {
     android.googleServicesFile = googleServicesJson;
     ios.googleServicesFile = googleServicesPlist;
-    if (!plugins.includes('@react-native-firebase/app')) {
-      plugins.push('@react-native-firebase/app');
+    for (const plugin of ['@react-native-firebase/app', '@react-native-firebase/messaging']) {
+      if (!plugins.includes(plugin)) {
+        plugins.push(plugin);
+      }
     }
   }
   return { ...appConfig, android, ios, plugins };

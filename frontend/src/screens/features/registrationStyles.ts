@@ -1,3 +1,4 @@
+// AI-assisted: see docs/AI_LOG.md #11.
 import { StyleSheet } from 'react-native';
 import { colors } from '../../components/ui';
 import { borders, radii, shadows, spacing, typography } from '../../theme/tokens';
@@ -60,6 +61,7 @@ export const registrationStyles = StyleSheet.create({
   formSubtitle: { color: colors.muted, fontSize: typography.caption + 1, lineHeight: typography.lineBody },
   formField: { marginBottom: spacing.xxs },
   fieldLabel: { color: colors.ink, fontSize: typography.caption + 1, fontWeight: typography.semibold, marginBottom: spacing.sm },
+  helperText: { color: colors.muted, fontSize: typography.caption, lineHeight: typography.lineCaption, marginTop: spacing.xs },
   requiredMark: { color: colors.danger, fontWeight: typography.bold },
   dropdownTrigger: {
     width: '100%',

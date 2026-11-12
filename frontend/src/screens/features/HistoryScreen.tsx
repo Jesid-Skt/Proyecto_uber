@@ -1,6 +1,6 @@
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useIsFocused, useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, Pressable, Text, View, type ListRenderItem } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button, Card, colors, commonStyles, Label, PageHeading } from '../../components/ui';
@@ -87,6 +87,10 @@ export function HistoryScreen() {
   const [pendingDate, setPendingDate] = useState(new Date());
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [historyLoading, setHistoryLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const nextOffset = useRef(0);
+  const hasMore = useRef(true);
+  const loadingMoreRequest = useRef(false);
   const historyFilters = useMemo(
     () => getHistoryFilters(dateFilter, paymentFilter, rangeStart, rangeEnd),
     [dateFilter, paymentFilter, rangeEnd, rangeStart],
@@ -94,12 +98,34 @@ export function HistoryScreen() {
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true);
     try {
-      await refreshTripHistory(historyFilters);
+      const page = await refreshTripHistory({ ...historyFilters, offset: 0, limit: 20 });
+      nextOffset.current = page.nextOffset;
+      hasMore.current = page.hasMore;
       setHistoryError(null);
     } catch (error) {
       setHistoryError(error instanceof Error ? error.message : 'No se pudo cargar el historial.');
     } finally {
       setHistoryLoading(false);
+    }
+  }, [historyFilters, refreshTripHistory]);
+  const loadMoreHistory = useCallback(async () => {
+    if (!hasMore.current || loadingMoreRequest.current) return;
+    loadingMoreRequest.current = true;
+    setLoadingMore(true);
+    try {
+      const page = await refreshTripHistory({
+        ...historyFilters,
+        offset: nextOffset.current,
+        limit: 20,
+      });
+      nextOffset.current = page.nextOffset;
+      hasMore.current = page.hasMore;
+      setHistoryError(null);
+    } catch (error) {
+      setHistoryError(error instanceof Error ? error.message : 'No se pudo cargar más historial.');
+    } finally {
+      loadingMoreRequest.current = false;
+      setLoadingMore(false);
     }
   }, [historyFilters, refreshTripHistory]);
   const openRangeDatePicker = (field: 'start' | 'end') => {
@@ -110,8 +136,12 @@ export function HistoryScreen() {
   useEffect(() => {
     if (!isFocused) return;
     let active = true;
-    void refreshTripHistory(historyFilters)
-      .then(() => {
+    nextOffset.current = 0;
+    hasMore.current = true;
+    void refreshTripHistory({ ...historyFilters, offset: 0, limit: 20 })
+      .then((page) => {
+        nextOffset.current = page.nextOffset;
+        hasMore.current = page.hasMore;
         if (active) setHistoryError(null);
       })
       .catch((error: unknown) => {
@@ -246,6 +276,8 @@ export function HistoryScreen() {
         data={filtered}
         renderItem={renderItem}
         keyExtractor={(item) => item.id}
+        onEndReached={() => void loadMoreHistory()}
+        onEndReachedThreshold={0.4}
         contentContainerStyle={[
           commonStyles.historyList,
           { paddingBottom: spacing.pageBottom + insets.bottom },
@@ -255,6 +287,7 @@ export function HistoryScreen() {
             <Text style={commonStyles.mutedCentered}>No hay viajes para los filtros seleccionados.</Text>
           </View>
         }
+        ListFooterComponent={loadingMore ? <Label muted>Cargando más viajes…</Label> : undefined}
       />
     </View>
   );
