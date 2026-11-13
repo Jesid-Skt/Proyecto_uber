@@ -1,11 +1,13 @@
 // AI-assisted: see docs/AI_LOG.md #1, #3, and #8.
 import * as SecureStore from 'expo-secure-store';
+import * as Location from 'expo-location';
 import React, {
   createContext,
   useCallback,
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import {
@@ -18,11 +20,6 @@ import {
   type EarningsSummary,
   type TripHistoryFilters,
 } from '../services/api';
-import {
-  requestDriverBackgroundLocationPermissions,
-  startDriverBackgroundLocationUpdates,
-  stopDriverBackgroundLocationUpdates,
-} from '../services/driver-background-location';
 import { DRIVER_SESSION_TOKEN_KEY as SESSION_TOKEN_KEY } from '../services/driver-session';
 import type { Trip, TripRoute } from '../types/domain';
 import { useDriverRealtime } from '../hooks/useDriverRealtime';
@@ -93,7 +90,6 @@ export function DriverProvider({ children }: React.PropsWithChildren) {
         const token = await SecureStore.getItemAsync(SESSION_TOKEN_KEY);
         if (!active) return;
         if (!token) {
-          await stopDriverBackgroundLocationUpdates();
           setProfile(null);
           setAvailableState(false);
           setSessionError(null);
@@ -107,39 +103,14 @@ export function DriverProvider({ children }: React.PropsWithChildren) {
         setProfile(response.driver);
         const shouldRestoreAvailability = response.driver.approvalStatus === 'approved'
           && response.driver.available;
-        let restoredAvailability = false;
-        let availabilityError: string | null = null;
-        if (shouldRestoreAvailability) {
-          try {
-            await requestDriverBackgroundLocationPermissions();
-            await startDriverBackgroundLocationUpdates();
-            restoredAvailability = true;
-          } catch (locationError) {
-            availabilityError = locationError instanceof Error
-              ? locationError.message
-              : 'No se pudo reanudar la ubicación en segundo plano.';
-            try {
-              const offline = await driverApi.setAvailability(token, false);
-              setProfile(offline.driver);
-            } catch (availabilityUpdateError) {
-              console.error('No se pudo desconectar al restaurar la sesión.', availabilityUpdateError);
-            }
-            await stopDriverBackgroundLocationUpdates().catch((stopError: unknown) => {
-              console.error('No se pudo detener la ubicación al restaurar la sesión.', stopError);
-            });
-          }
-        } else {
-          await stopDriverBackgroundLocationUpdates();
-        }
-        setAvailableState(restoredAvailability);
+        setAvailableState(shouldRestoreAvailability);
         const tripResponse = await driverApi.getActiveTrip(token);
         if (!active) return;
         setActiveTrip(tripResponse.trip ? mapTripResponse(tripResponse.trip) : null);
-        setSessionError(availabilityError);
+        setSessionError(null);
       } catch (error) {
         if (!active) return;
         if (error instanceof ApiError && error.status === 401) {
-          await stopDriverBackgroundLocationUpdates();
           await SecureStore.deleteItemAsync(SESSION_TOKEN_KEY);
           if (!active) return;
           setProfile(null);
@@ -161,7 +132,6 @@ export function DriverProvider({ children }: React.PropsWithChildren) {
     token: string;
     driver: DriverProfile;
   }) => {
-    await stopDriverBackgroundLocationUpdates();
     const driver = response.driver.available
       ? (await driverApi.setAvailability(response.token, false)).driver
       : response.driver;
@@ -197,7 +167,6 @@ export function DriverProvider({ children }: React.PropsWithChildren) {
     if (token && available) {
       await driverApi.setAvailability(token, false);
     }
-    await stopDriverBackgroundLocationUpdates();
     await SecureStore.deleteItemAsync(SESSION_TOKEN_KEY);
     setProfile(null);
     setAvailableState(false);
@@ -221,7 +190,6 @@ export function DriverProvider({ children }: React.PropsWithChildren) {
     setProfile(response.driver);
     const shouldBeAvailable = response.driver.approvalStatus === 'approved'
       && response.driver.available;
-    if (!shouldBeAvailable) await stopDriverBackgroundLocationUpdates();
     setAvailableState(shouldBeAvailable);
     return response.driver;
   }, []);
@@ -235,7 +203,6 @@ export function DriverProvider({ children }: React.PropsWithChildren) {
     setProfile(response.driver);
     const shouldBeAvailable = response.driver.approvalStatus === 'approved'
       && response.driver.available;
-    if (!shouldBeAvailable) await stopDriverBackgroundLocationUpdates();
     setAvailableState(shouldBeAvailable);
   }, []);
 
@@ -250,10 +217,7 @@ export function DriverProvider({ children }: React.PropsWithChildren) {
     setProfile(response.driver);
     const shouldBeAvailable = response.driver.approvalStatus === 'approved'
       && response.driver.available;
-    if (!shouldBeAvailable) {
-      await stopDriverBackgroundLocationUpdates();
-      setAvailableState(false);
-    }
+    setAvailableState(shouldBeAvailable);
   }, []);
 
   const setAvailable = useCallback(async (value: boolean) => {
@@ -266,43 +230,25 @@ export function DriverProvider({ children }: React.PropsWithChildren) {
     }
 
     if (value) {
-      await requestDriverBackgroundLocationPermissions();
-    } else {
-      await stopDriverBackgroundLocationUpdates();
+      if (!(await Location.hasServicesEnabledAsync())) {
+        throw new Error('Activa los servicios de ubicación del dispositivo y vuelve a intentar.');
+      }
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (!permission.granted) {
+        throw new Error('Activa el permiso de ubicación para conectarte.');
+      }
     }
 
-    let response: Awaited<ReturnType<typeof driverApi.setAvailability>>;
+    const previousAvailability = available;
+    if (!value) setAvailableState(false);
     try {
-      response = await driverApi.setAvailability(token, value);
+      const response = await driverApi.setAvailability(token, value);
+      setProfile(response.driver);
+      setAvailableState(response.driver.available);
     } catch (error) {
-      if (!value && available) {
-        await startDriverBackgroundLocationUpdates().catch((restartError: unknown) => {
-          console.error('No se pudo reanudar la ubicación tras fallar la desconexión.', restartError);
-        });
-      }
+      if (!value) setAvailableState(previousAvailability);
       throw error;
     }
-
-    if (response.driver.available && value) {
-      try {
-        await startDriverBackgroundLocationUpdates();
-      } catch (locationError) {
-        await stopDriverBackgroundLocationUpdates().catch((stopError: unknown) => {
-          console.error('No se pudo detener la ubicación tras fallar su inicio.', stopError);
-        });
-        try {
-          const offline = await driverApi.setAvailability(token, false);
-          setProfile(offline.driver);
-          setAvailableState(false);
-        } catch (rollbackError) {
-          console.error('No se pudo desactivar la disponibilidad tras fallar la ubicación.', rollbackError);
-        }
-        throw locationError;
-      }
-    }
-
-    setProfile(response.driver);
-    setAvailableState(response.driver.available);
   }, [available, profile]);
 
   const updateLocation = useCallback(async (location: { lat: number; lng: number }) => {
@@ -325,12 +271,18 @@ export function DriverProvider({ children }: React.PropsWithChildren) {
     } : null);
   }, []);
 
+  const historyGeneration = useRef(0);
   const refreshTripHistory = useCallback(async (filters?: TripHistoryFilters) => {
+    if (!filters?.offset) historyGeneration.current += 1;
+    const generation = historyGeneration.current;
     const token = await SecureStore.getItemAsync(SESSION_TOKEN_KEY);
     if (!token) {
       throw new ApiError('Inicia sesión para consultar el historial.', 401);
     }
     const response = await driverApi.getTripHistory(token, filters);
+    if (generation !== historyGeneration.current) {
+      throw new Error('La consulta de historial fue reemplazada por otro filtro.');
+    }
     const page = response.trips.map(mapTripResponse);
     setTrips((current) => filters?.offset
       ? [...current, ...page.filter((trip) => !current.some((item) => item.id === trip.id))]

@@ -44,11 +44,11 @@ export const envSchema = z.object({
       message: 'FIREBASE_PROJECT_ID es obligatorio en producción para las notificaciones FCM.',
     });
   }
-  if (value.NODE_ENV === 'production' && !value.GOOGLE_MAPS_SERVER_API_KEY) {
+  if (value.NODE_ENV === 'production' && !value.GOOGLE_MAPS_SERVER_API_KEY && !value.ORS_API_KEY) {
     context.addIssue({
       code: 'custom',
       path: ['GOOGLE_MAPS_SERVER_API_KEY'],
-      message: 'GOOGLE_MAPS_SERVER_API_KEY es obligatorio en producción para tarifas y navegación.',
+      message: 'Configura GOOGLE_MAPS_SERVER_API_KEY u ORS_API_KEY para tarifas y navegación.',
     });
   }
   const mercadoPagoConfigured = Boolean(value.MERCADO_PAGO_ACCESS_TOKEN);

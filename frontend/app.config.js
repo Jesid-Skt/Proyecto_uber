@@ -1,46 +1,61 @@
+
 // AI-assisted: see docs/AI_LOG.md #1 and #3.
 const fs = require('node:fs');
 const path = require('node:path');
 
 module.exports = ({ config }) => {
   const plugins = [...(config.plugins ?? [])];
-  if (!plugins.includes('expo-secure-store')) {
-    plugins.push('expo-secure-store');
-  }
-  const mapsApiKey = process.env.GOOGLE_MAPS_API_KEY;
+
+  const addPlugin = (name) => {
+    if (!plugins.some((plugin) =>
+      Array.isArray(plugin) ? plugin[0] === name : plugin === name
+    )) {
+      plugins.push(name);
+    }
+  };
+
+  addPlugin('expo-secure-store');
+
+  addPlugin('@maplibre/maplibre-react-native');
+
   const googleServicesJson = process.env.GOOGLE_SERVICES_JSON
     ? path.resolve(__dirname, process.env.GOOGLE_SERVICES_JSON)
     : path.join(__dirname, 'google-services.json');
+
   const googleServicesPlist = process.env.GOOGLE_SERVICES_PLIST
     ? path.resolve(__dirname, process.env.GOOGLE_SERVICES_PLIST)
     : path.join(__dirname, 'GoogleService-Info.plist');
 
-  if (mapsApiKey) {
-    plugins.push([
-      'react-native-maps',
-      {
-        androidGoogleMapsApiKey: mapsApiKey,
-        iosGoogleMapsApiKey: mapsApiKey,
-      },
-    ]);
-  }
-
-  const appConfig = { ...config, plugins };
   const android = { ...(config.android ?? {}) };
   const ios = { ...(config.ios ?? {}) };
+
   const hasAndroidFirebaseConfig = fs.existsSync(googleServicesJson);
   const hasIosFirebaseConfig = fs.existsSync(googleServicesPlist);
-  if (hasAndroidFirebaseConfig !== hasIosFirebaseConfig) {
-    throw new Error('Para activar FCM, configura tanto google-services.json como GoogleService-Info.plist.');
-  }
-  if (hasAndroidFirebaseConfig && hasIosFirebaseConfig) {
+
+  // Firebase Android
+  if (hasAndroidFirebaseConfig) {
     android.googleServicesFile = googleServicesJson;
-    ios.googleServicesFile = googleServicesPlist;
-    for (const plugin of ['@react-native-firebase/app', '@react-native-firebase/messaging']) {
-      if (!plugins.includes(plugin)) {
-        plugins.push(plugin);
-      }
-    }
+  } else {
+    delete android.googleServicesFile;
   }
-  return { ...appConfig, android, ios, plugins };
+
+  // Firebase iOS
+  if (hasIosFirebaseConfig) {
+    ios.googleServicesFile = googleServicesPlist;
+  } else {
+    delete ios.googleServicesFile;
+  }
+
+  // Registrar Firebase cuando exista configuración nativa.
+  if (hasAndroidFirebaseConfig || hasIosFirebaseConfig) {
+    addPlugin('@react-native-firebase/app');
+    addPlugin('@react-native-firebase/messaging');
+  }
+
+  return {
+    ...config,
+    android,
+    ios,
+    plugins,
+  };
 };

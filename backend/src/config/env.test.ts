@@ -14,6 +14,18 @@ const validDevelopmentEnv = {
   BACKEND_PUBLIC_URL: '',
 };
 
+test('production accepts ORS without Google and rejects missing routing providers', () => {
+  const production = {
+    ...validDevelopmentEnv,
+    NODE_ENV: 'production',
+    TRIP_REQUEST_API_KEY: 'p'.repeat(32),
+    FIREBASE_PROJECT_ID: 'test-project',
+    ORS_API_KEY: 'test-ors-key',
+  };
+  assert.equal(envSchema.safeParse(production).success, true);
+  assert.equal(envSchema.safeParse({ ...production, ORS_API_KEY: '' }).success, false);
+});
+
 test('allows blank optional provider variables when integrations are not enabled', () => {
   const parsed = envSchema.safeParse(validDevelopmentEnv);
   assert.equal(parsed.success, true);

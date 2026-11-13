@@ -1,15 +1,15 @@
+import { useLocalization } from '../../localization/useLocalization';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useIsFocused, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, Pressable, Text, View, type ListRenderItem } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button, Card, colors, commonStyles, Label, PageHeading } from '../../components/ui';
-import { formatCop } from '../../config/pricing';
 import { useDriver } from '../../context/DriverContext';
 import { type TripHistoryFilters } from '../../services/api';
 import type { PaymentMethod, Trip } from '../../types/domain';
 import { spacing } from '../../theme/tokens';
-import { formatDate, formatDateInput } from '../shared/formatters';
+import { formatDateInput } from '../shared/formatters';
 
 type DateFilter = 'today' | 'week' | 'month' | 'range' | 'all';
 
@@ -75,6 +75,7 @@ function getHistoryFilters(
 }
 
 export function HistoryScreen() {
+  const { t, translateText, formatCurrency, formatNumber, formatDate, paymentStatusLabel, locale } = useLocalization();
   const insets = useSafeAreaInsets();
   const { trips, refreshTripHistory } = useDriver();
   const router = useRouter();
@@ -91,25 +92,54 @@ export function HistoryScreen() {
   const nextOffset = useRef(0);
   const hasMore = useRef(true);
   const loadingMoreRequest = useRef(false);
+  const loadingMoreRequestId = useRef(0);
+  const requestGeneration = useRef(0);
   const historyFilters = useMemo(
     () => getHistoryFilters(dateFilter, paymentFilter, rangeStart, rangeEnd),
     [dateFilter, paymentFilter, rangeEnd, rangeStart],
   );
+  const historyFilterKey = JSON.stringify(historyFilters);
+  const latestFilterKey = useRef(historyFilterKey);
+  const changeHistoryFilters = (change: () => void) => {
+    requestGeneration.current += 1;
+    latestFilterKey.current = '';
+    loadingMoreRequestId.current += 1;
+    loadingMoreRequest.current = false;
+    setLoadingMore(false);
+    setHistoryLoading(true);
+    setHistoryError(null);
+    change();
+  };
   const loadHistory = useCallback(async () => {
+    const generation = ++requestGeneration.current;
+    const filterKey = historyFilterKey;
+    nextOffset.current = 0;
+    hasMore.current = true;
     setHistoryLoading(true);
     try {
       const page = await refreshTripHistory({ ...historyFilters, offset: 0, limit: 20 });
+      if (generation !== requestGeneration.current || filterKey !== latestFilterKey.current) return;
       nextOffset.current = page.nextOffset;
       hasMore.current = page.hasMore;
       setHistoryError(null);
     } catch (error) {
-      setHistoryError(error instanceof Error ? error.message : 'No se pudo cargar el historial.');
+      if (generation === requestGeneration.current && filterKey === latestFilterKey.current) {
+        setHistoryError(error instanceof Error ? error.message : 'No se pudo cargar el historial.');
+      }
     } finally {
-      setHistoryLoading(false);
+      if (generation === requestGeneration.current) setHistoryLoading(false);
     }
-  }, [historyFilters, refreshTripHistory]);
+  }, [historyFilterKey, historyFilters, refreshTripHistory]);
   const loadMoreHistory = useCallback(async () => {
-    if (!hasMore.current || loadingMoreRequest.current) return;
+    const generation = requestGeneration.current;
+    const filterKey = historyFilterKey;
+    if (
+      !hasMore.current
+      || loadingMoreRequest.current
+      || !isFocused
+      || filterKey !== latestFilterKey.current
+    ) return;
+    const requestId = ++loadingMoreRequestId.current;
     loadingMoreRequest.current = true;
     setLoadingMore(true);
     try {
@@ -118,16 +148,21 @@ export function HistoryScreen() {
         offset: nextOffset.current,
         limit: 20,
       });
+      if (generation !== requestGeneration.current || filterKey !== latestFilterKey.current) return;
       nextOffset.current = page.nextOffset;
       hasMore.current = page.hasMore;
       setHistoryError(null);
     } catch (error) {
-      setHistoryError(error instanceof Error ? error.message : 'No se pudo cargar más historial.');
+      if (generation === requestGeneration.current && filterKey === latestFilterKey.current) {
+        setHistoryError(error instanceof Error ? error.message : 'No se pudo cargar más historial.');
+      }
     } finally {
-      loadingMoreRequest.current = false;
-      setLoadingMore(false);
+      if (requestId === loadingMoreRequestId.current) {
+        loadingMoreRequest.current = false;
+        setLoadingMore(false);
+      }
     }
-  }, [historyFilters, refreshTripHistory]);
+  }, [historyFilterKey, historyFilters, isFocused, refreshTripHistory]);
   const openRangeDatePicker = (field: 'start' | 'end') => {
     const value = field === 'start' ? rangeStart : rangeEnd;
     setPendingDate(value ? new Date(`${value}T12:00:00`) : new Date());
@@ -135,25 +170,31 @@ export function HistoryScreen() {
   };
   useEffect(() => {
     if (!isFocused) return;
+    const generation = ++requestGeneration.current;
+    const filterKey = historyFilterKey;
+    latestFilterKey.current = filterKey;
     let active = true;
     nextOffset.current = 0;
     hasMore.current = true;
     void refreshTripHistory({ ...historyFilters, offset: 0, limit: 20 })
       .then((page) => {
+        if (!active || generation !== requestGeneration.current || filterKey !== latestFilterKey.current) return;
         nextOffset.current = page.nextOffset;
         hasMore.current = page.hasMore;
-        if (active) setHistoryError(null);
+        setHistoryError(null);
       })
       .catch((error: unknown) => {
-        if (active) setHistoryError(error instanceof Error ? error.message : 'No se pudo cargar el historial.');
+        if (active && generation === requestGeneration.current && filterKey === latestFilterKey.current) {
+          setHistoryError(error instanceof Error ? error.message : 'No se pudo cargar el historial.');
+        }
       })
       .finally(() => {
-        if (active) setHistoryLoading(false);
+        if (active && generation === requestGeneration.current) setHistoryLoading(false);
       });
     return () => {
       active = false;
     };
-  }, [historyFilters, isFocused, refreshTripHistory]);
+  }, [historyFilterKey, historyFilters, isFocused, refreshTripHistory]);
   const filtered = useMemo(
     () =>
       [...trips]
@@ -167,30 +208,30 @@ export function HistoryScreen() {
       <Card>
         <View style={commonStyles.spread}>
           <Text style={{ color: colors.ink, fontWeight: '700' }}>{formatDate(item.createdAt, true)}</Text>
-          <Text style={commonStyles.emphasisValue}>{formatCop(item.driverEarnings)}</Text>
+          <Text style={commonStyles.emphasisValue}>{formatCurrency(item.driverEarnings)}</Text>
         </View>
         <Label>{item.origin.address} → {item.destination.address}</Label>
-        <Label muted>{item.category} · {item.distanceKm} km · {item.paymentStatus}</Label>
-        <Label muted>Tarifa {formatCop(item.fare)} · comisión {formatCop(item.commission)}</Label>
+        <Label muted>{translateText(item.category)} · {formatNumber(item.distanceKm)} km · {paymentStatusLabel(item.paymentStatus)}</Label>
+        <Label muted>{t('Tarifa {fare} · comisión {commission}', { fare: formatCurrency(item.fare), commission: formatCurrency(item.commission) })}</Label>
       </Card>
     </Pressable>
   );
   return (
     <View style={commonStyles.historyPage}>
     <View style={commonStyles.historyHeader}>
-        <PageHeading title="Historial" subtitle="Hasta 100 viajes recientes, con filtros por fecha y pago." />
+        <PageHeading title={t("Historial")} subtitle={t("Hasta 100 viajes recientes, con filtros por fecha y pago.")} />
         {historyError ? (
           <Card>
-            <Label>{historyError}</Label>
-            <Button title="Reintentar" variant="secondary" onPress={() => void loadHistory()} />
+            <Label>{translateText(historyError)}</Label>
+            <Button title={t("Reintentar")} variant="secondary" onPress={() => void loadHistory()} />
           </Card>
         ) : null}
-        {historyLoading ? <Label muted>Cargando historial…</Label> : null}
+        {historyLoading ? <Label muted>{t("Cargando historial…")}</Label> : null}
         <View style={commonStyles.chipRow}>
           {(['today', 'week', 'month', 'range', 'all'] as const).map((filter) => (
             <Pressable
               key={filter}
-              onPress={() => setDateFilter(filter)}
+              onPress={() => changeHistoryFilters(() => setDateFilter(filter))}
               style={[
                 commonStyles.chip,
                 commonStyles.historyChip,
@@ -206,7 +247,7 @@ export function HistoryScreen() {
                   dateFilter === filter ? commonStyles.chipTextSelected : null,
                 ]}
               >
-                {{ today: 'Hoy', week: 'Semana', month: 'Mes', range: 'Rango', all: 'Todos' }[filter]}
+                {{ today: t("Hoy"), week: t("Semana"), month: t("Mes"), range: t("Rango"), all: t("Todos") }[filter]}
               </Text>
             </Pressable>
           ))}
@@ -215,14 +256,14 @@ export function HistoryScreen() {
           <View style={commonStyles.row}>
             <View style={{ flex: 1 }}>
               <Button
-                title={rangeStart ? `Desde ${rangeStart}` : 'Fecha inicial'}
+                title={rangeStart ? t('Desde {date}', { date: formatDate(new Date(`${rangeStart}T12:00:00`)) }) : t("Fecha inicial")}
                 variant="secondary"
                 onPress={() => openRangeDatePicker('start')}
               />
             </View>
             <View style={{ flex: 1 }}>
               <Button
-                title={rangeEnd ? `Hasta ${rangeEnd}` : 'Fecha final'}
+                title={rangeEnd ? t('Hasta {date}', { date: formatDate(new Date(`${rangeEnd}T12:00:00`)) }) : t("Fecha final")}
                 variant="secondary"
                 onPress={() => openRangeDatePicker('end')}
               />
@@ -232,14 +273,17 @@ export function HistoryScreen() {
         {dateField ? (
           <Card style={commonStyles.datePickerCard}>
             <DateTimePicker
+              locale={locale}
               value={pendingDate}
               mode="date"
               maximumDate={new Date()}
               onValueChange={(_, selectedDate) => {
                 const field = dateField;
                 setDateField(null);
-                if (field === 'start') setRangeStart(formatDateInput(selectedDate));
-                else setRangeEnd(formatDateInput(selectedDate));
+                changeHistoryFilters(() => {
+                  if (field === 'start') setRangeStart(formatDateInput(selectedDate));
+                  else setRangeEnd(formatDateInput(selectedDate));
+                });
               }}
               onDismiss={() => setDateField(null)}
             />
@@ -249,7 +293,7 @@ export function HistoryScreen() {
           {(['all', 'cash', 'mercadopago', 'stripe'] as const).map((filter) => (
             <Pressable
               key={filter}
-              onPress={() => setPaymentFilter(filter)}
+              onPress={() => changeHistoryFilters(() => setPaymentFilter(filter))}
               style={[
                 commonStyles.chip,
                 commonStyles.paymentChip,
@@ -266,7 +310,7 @@ export function HistoryScreen() {
                   paymentFilter === filter ? commonStyles.paymentChipTextSelected : null,
                 ]}
               >
-                {{ all: 'Todos los pagos', cash: 'Efectivo', mercadopago: 'Mercado Pago', stripe: 'Stripe' }[filter]}
+                {{ all: t("Todos los pagos"), cash: t("Efectivo"), mercadopago: t("Mercado Pago"), stripe: t("Stripe") }[filter]}
               </Text>
             </Pressable>
           ))}
@@ -284,10 +328,10 @@ export function HistoryScreen() {
         ]}
         ListEmptyComponent={
           <View style={commonStyles.emptyState}>
-            <Text style={commonStyles.mutedCentered}>No hay viajes para los filtros seleccionados.</Text>
+            <Text style={commonStyles.mutedCentered}>{t("No hay viajes para los filtros seleccionados.")}</Text>
           </View>
         }
-        ListFooterComponent={loadingMore ? <Label muted>Cargando más viajes…</Label> : undefined}
+        ListFooterComponent={loadingMore ? <Label muted>{t("Cargando más viajes…")}</Label> : undefined}
       />
     </View>
   );

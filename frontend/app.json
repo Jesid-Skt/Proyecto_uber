@@ -15,11 +15,7 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Usamos tu ubicación para mostrarte en el mapa y recibir solicitudes mientras estás disponible.",
-          "locationAlwaysAndWhenInUsePermission": "UberClone comparte tu ubicación en segundo plano solo mientras estés disponible para recibir viajes.",
-          "isIosBackgroundLocationEnabled": true,
-          "isAndroidBackgroundLocationEnabled": true,
-          "isAndroidForegroundServiceEnabled": true
+          "locationWhenInUsePermission": "Usamos tu ubicación para mostrarte en el mapa y recibir solicitudes mientras estás disponible."
         }
       ],
       [

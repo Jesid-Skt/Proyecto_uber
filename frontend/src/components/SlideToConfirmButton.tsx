@@ -1,3 +1,4 @@
+import { useLocalization } from '../localization/useLocalization';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useCallback, useEffect, useMemo } from 'react';
@@ -23,6 +24,7 @@ export function SlideToConfirmButton({
   disabled?: boolean;
   onConfirm: () => void;
 }) {
+  const { t } = useLocalization();
   const trackWidth = useSharedValue(0);
   const translateX = useSharedValue(0);
 
@@ -81,7 +83,7 @@ export function SlideToConfirmButton({
           accessible
           accessibilityRole="button"
           accessibilityLabel={title}
-          accessibilityHint="Desliza hacia la derecha para confirmar"
+          accessibilityHint={t("Desliza hacia la derecha para confirmar")}
           accessibilityState={{ disabled }}
           onAccessibilityTap={() => {
             if (!disabled) notifyComplete();

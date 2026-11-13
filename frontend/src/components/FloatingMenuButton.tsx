@@ -1,18 +1,20 @@
+import { useLocalization } from '../localization/useLocalization';
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet } from 'react-native';
 import { tripPalette } from './trip-flow-theme';
 
 export function FloatingMenuButton({
   onPress,
-  label = 'Abrir menú',
+  label,
 }: {
   onPress: () => void;
   label?: string;
 }) {
+  const { t } = useLocalization();
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={label}
+      accessibilityLabel={label ?? t('Abrir menú')}
       onPress={onPress}
       style={styles.button}
       hitSlop={8}

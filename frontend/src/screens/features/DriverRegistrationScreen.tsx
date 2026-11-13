@@ -1,70 +1,44 @@
 // AI-assisted: see docs/AI_LOG.md #11.
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { TabTrigger } from 'expo-router/ui';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Image, Modal, Platform, Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button, Card, commonStyles, Field, Label, Page, PageHeading } from '../../components/ui';
 import { PRICING } from '../../config/pricing';
 import { useDriver } from '../../context/DriverContext';
+import { registrationTabs, useRegistration } from '../../context/RegistrationContext';
 import { ApiError, appendImage } from '../../services/api';
 import { registrationStyles } from './registrationStyles';
 import {
   clearRegistrationFieldError,
   getRegistrationStepErrors,
-  type RegistrationData,
 } from '../../utils/driver-registration';
 import { formatDateInput } from '../shared/formatters';
 
-function formatRegistrationDate(date: Date): string {
-  return `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`;
-}
-
-const initialRegistration: RegistrationData = {
-  fullName: '',
-  idNumber: '',
-  phone: '',
-  birthDate: '',
-  gender: '',
-  email: '',
-  language: 'Español',
-  password: '',
-  profilePhoto: '',
-  category: 'Económico',
-  plate: '',
-  make: '',
-  model: '',
-  year: '',
-  color: '',
-  capacity: '',
-  vehiclePhoto: '',
-  licenseNumber: '',
-  licensePhoto: '',
-  licenseExpiry: '',
-  soatPhoto: '',
-  soatExpiry: '',
-  revisionPhoto: '',
-  revisionExpiry: '',
-  mercadoPagoEmail: '',
-};
-
-export function DriverRegistrationScreen() {
+export function DriverRegistrationScreen({ step = 0 }: { step?: 0 | 1 | 2 }) {
   const { register, profile } = useDriver();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const [step, setStep] = useState(0);
-  const [data, setData] = useState(initialRegistration);
-  const [termsAccepted, setTermsAccepted] = useState(false);
-  const [attemptedSteps, setAttemptedSteps] = useState<Record<number, boolean>>({});
-  const [serverErrors, setServerErrors] = useState<Record<string, string>>({});
-  const [mediaErrors, setMediaErrors] = useState<Record<string, string>>({});
-  const [message, setMessage] = useState<string | null>(null);
+  const {
+    data, setData, termsAccepted, setTermsAccepted, attemptedSteps, setAttemptedSteps,
+    serverErrors, setServerErrors, mediaErrors, setMediaErrors, message, setMessage,
+    submitting, setSubmitting, localization,
+  } = useRegistration();
+  const { t, translateText, formatDate, formatNumber, locale } = localization;
   const [dateField, setDateField] = useState<string | null>(null);
   const [pendingDate, setPendingDate] = useState(new Date(2000, 0, 1));
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  useFocusEffect(useCallback(() => () => {
+    setOpenDropdown(null);
+    setDateField(null);
+  }, []));
+  const setStep = (targetStep: number) => {
+    router.navigate(registrationTabs[targetStep].href);
+  };
   const commissionRate = Math.round(PRICING.commissionRate * 100);
   const allErrors = [0, 1, 2].flatMap((targetStep) =>
     Object.keys(getRegistrationStepErrors(data, targetStep, termsAccepted)),
@@ -200,7 +174,7 @@ export function DriverRegistrationScreen() {
           'email', 'password', 'language',
         ]);
         const vehicleFields = new Set([
-          'category', 'plate', 'make', 'vehicleModel', 'year', 'color', 'capacity', 'vehiclePhoto',
+          'category', 'plate', 'make', 'model', 'year', 'color', 'capacity', 'vehiclePhoto',
         ]);
         const firstField = Object.keys(nextErrors)[0];
         const errorStep = personalFields.has(firstField) ? 0 : vehicleFields.has(firstField) ? 1 : 2;
@@ -228,11 +202,11 @@ export function DriverRegistrationScreen() {
   ) => (
     <View style={registrationStyles.formField}>
       <Field
-        label={label}
+        label={translateText(label)}
         required
         value={data[key]}
         onChangeText={(value) => update(key, options?.upper ? value.toUpperCase() : value)}
-        error={fieldErrors[key]}
+        error={fieldErrors[key] ? translateText(fieldErrors[key]) : undefined}
         keyboardType={options?.keyboardType}
         maxLength={options?.maxLength}
         secureTextEntry={options?.secureTextEntry}
@@ -246,13 +220,13 @@ export function DriverRegistrationScreen() {
     <View style={registrationStyles.photoField}>
       <View style={commonStyles.spread}>
         <Text style={registrationStyles.fieldLabel}>
-          {label}<Text style={registrationStyles.requiredMark}> *</Text>
+          {translateText(label)}<Text style={registrationStyles.requiredMark}> *</Text>
         </Text>
-        <Text style={registrationStyles.requiredTag}>Obligatorio</Text>
+        <Text style={registrationStyles.requiredTag}>{t("Obligatorio")}</Text>
       </View>
       {data[field] ? (
         <Image
-          accessibilityLabel={`Vista previa: ${label}`}
+          accessibilityLabel={`Vista previa: ${translateText(label)}`}
           source={{ uri: data[field] }}
           style={registrationStyles.photoPreview}
           resizeMode="cover"
@@ -260,19 +234,19 @@ export function DriverRegistrationScreen() {
       ) : (
         <View style={registrationStyles.photoPlaceholder}>
           <Text style={registrationStyles.photoGlyph}>＋</Text>
-          <Text style={registrationStyles.photoHint}>Agrega una imagen clara y legible.</Text>
+          <Text style={registrationStyles.photoHint}>{t("Agrega una imagen clara y legible.")}</Text>
         </View>
       )}
-      <Text style={registrationStyles.helperText}>Imagen JPEG, PNG o WebP; máximo 5 MB.</Text>
+      <Text style={registrationStyles.helperText}>{t("Imagen JPEG, PNG o WebP; máximo 5 MB.")}</Text>
       <View style={commonStyles.row}>
         <View style={registrationStyles.photoButton}>
-          <Button title="Elegir de galería" variant="secondary" onPress={() => void pickPhoto(field, false)} />
+          <Button title={t("Elegir de galería")} variant="secondary" onPress={() => void pickPhoto(field, false)} />
         </View>
         <View style={registrationStyles.photoButton}>
-          <Button title="Tomar foto" variant="secondary" onPress={() => void pickPhoto(field, true)} />
+          <Button title={t("Tomar foto")} variant="secondary" onPress={() => void pickPhoto(field, true)} />
         </View>
       </View>
-      {fieldErrors[field] ? <Text style={registrationStyles.error}>{fieldErrors[field]}</Text> : null}
+      {fieldErrors[field] ? <Text style={registrationStyles.error}>{translateText(fieldErrors[field])}</Text> : null}
     </View>
   );
   const dropdown = (key: string, label: string, options: string[], helperText?: string) => {
@@ -280,7 +254,7 @@ export function DriverRegistrationScreen() {
     return (
       <View style={registrationStyles.formField}>
         <Text style={registrationStyles.fieldLabel}>
-          {label}<Text style={registrationStyles.requiredMark}> *</Text>
+          {translateText(label)}<Text style={registrationStyles.requiredMark}> *</Text>
         </Text>
         <Pressable
           accessibilityRole="button"
@@ -300,7 +274,7 @@ export function DriverRegistrationScreen() {
               data[key] ? registrationStyles.dropdownValue : registrationStyles.dropdownPlaceholder,
             ]}
           >
-            {data[key] || 'Selecciona una opción'}
+            {data[key] ? translateText(data[key]) : t('Selecciona una opción')}
           </Text>
           <Text style={registrationStyles.dropdownChevron}>{expanded ? '⌃' : '⌄'}</Text>
         </Pressable>
@@ -309,7 +283,7 @@ export function DriverRegistrationScreen() {
             {options.map((option) => (
               <Pressable
                 accessibilityRole="button"
-                key={option}
+                key={translateText(option)}
                 onPress={() => {
                   update(key, option);
                   setOpenDropdown(null);
@@ -325,7 +299,7 @@ export function DriverRegistrationScreen() {
                     data[key] === option ? registrationStyles.selectedOption : null,
                   ]}
                 >
-                  {option}
+                  {translateText(option)}
                 </Text>
                 {data[key] === option ? <Text style={registrationStyles.selectedOption}>✓</Text> : null}
               </Pressable>
@@ -333,18 +307,18 @@ export function DriverRegistrationScreen() {
           </View>
         ) : null}
         {helperText ? <Text style={registrationStyles.helperText}>{helperText}</Text> : null}
-        {fieldErrors[key] ? <Text style={registrationStyles.error}>{fieldErrors[key]}</Text> : null}
+        {fieldErrors[key] ? <Text style={registrationStyles.error}>{translateText(fieldErrors[key])}</Text> : null}
       </View>
     );
   };
   const dateFieldControl = (key: string, label: string, helperText: string) => (
     <View style={registrationStyles.formField}>
       <Text style={registrationStyles.fieldLabel}>
-        {label}<Text style={registrationStyles.requiredMark}> *</Text>
+        {translateText(label)}<Text style={registrationStyles.requiredMark}> *</Text>
       </Text>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`${label}, ${data[key] ? formatRegistrationDate(new Date(`${data[key]}T12:00:00`)) : 'seleccionar fecha'}`}
+        accessibilityLabel={`${translateText(label)}, ${data[key] ? formatDate(new Date(`${data[key]}T12:00:00`)) : t("seleccionar fecha")}`}
         onPress={() => showDatePicker(key, data[key])}
         style={[
           registrationStyles.dropdownTrigger,
@@ -360,28 +334,28 @@ export function DriverRegistrationScreen() {
             data[key] ? registrationStyles.dropdownValue : registrationStyles.dropdownPlaceholder,
           ]}
         >
-          {data[key] ? formatRegistrationDate(new Date(`${data[key]}T12:00:00`)) : 'Selecciona una fecha'}
+          {data[key] ? formatDate(new Date(`${data[key]}T12:00:00`)) : t("Selecciona una fecha")}
         </Text>
         <Text style={registrationStyles.calendarGlyph}>▦</Text>
       </Pressable>
       <Text style={registrationStyles.helperText}>{helperText}</Text>
-      {fieldErrors[key] ? <Text style={registrationStyles.error}>{fieldErrors[key]}</Text> : null}
+      {fieldErrors[key] ? <Text style={registrationStyles.error}>{translateText(fieldErrors[key])}</Text> : null}
     </View>
   );
 
   return (
     <Page>
       <View style={registrationStyles.header}>
-        <Text style={registrationStyles.eyebrow}>CREA TU PERFIL</Text>
+        <Text style={registrationStyles.eyebrow}>{t("CREA TU PERFIL")}</Text>
         <PageHeading
-          title="Registro del conductor"
-          subtitle="Completa tus datos para empezar el proceso de aprobación."
+          title={t("Registro del conductor")}
+          subtitle={t("Completa tus datos para empezar el proceso de aprobación.")}
         />
       </View>
       <Card style={registrationStyles.progressCard}>
         <View style={commonStyles.spread}>
-          <Text style={registrationStyles.progressTitle}>Paso {step + 1} de 3</Text>
-          <Text style={registrationStyles.progressPercent}>{Math.round(((step + 1) / 3) * 100)} %</Text>
+          <Text style={registrationStyles.progressTitle}>{t('Paso {step} de 3', { step: formatNumber(step + 1) })}</Text>
+          <Text style={registrationStyles.progressPercent}>{formatNumber(Math.round(((step + 1) / 3) * 100))} %</Text>
         </View>
         <View style={registrationStyles.progressTrack}>
           {[0, 1, 2].map((index) => (
@@ -395,142 +369,142 @@ export function DriverRegistrationScreen() {
           ))}
         </View>
         <Text style={registrationStyles.commissionNote}>
-          La comisión de la plataforma es del {commissionRate} % por viaje.
+          {t('La comisión de la plataforma es del {rate} % por viaje.', { rate: formatNumber(commissionRate) })}
         </Text>
       </Card>
       <View style={registrationStyles.tabRow}>
-        {['Datos personales', 'Vehículo', 'Documentos'].map((name, index) => (
-          <Pressable
-            key={name}
-            onPress={() => {
-              setAttemptedSteps((current) => ({ ...current, [index]: true }));
-              setStep(index);
-              setOpenDropdown(null);
-            }}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: step === index }}
-            style={[
-              registrationStyles.tab,
-              step === index ? registrationStyles.activeTab : null,
-            ]}
-          >
-            <Text style={[
-              registrationStyles.tabNumber,
-              step === index ? registrationStyles.activeTabText : null,
-            ]}>
-              {Object.keys(getRegistrationStepErrors(data, index, termsAccepted)).length === 0 ? '✓' : index + 1}
-            </Text>
-            <Text
-              numberOfLines={1}
-              adjustsFontSizeToFit
-              minimumFontScale={0.8}
+        {registrationTabs.map(({ name, label }, index) => (
+          <TabTrigger key={name} name={name} asChild>
+            <Pressable
+              onPress={() => {
+                setAttemptedSteps((current) => ({ ...current, [index]: true }));
+                setOpenDropdown(null);
+              }}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: step === index }}
               style={[
-                registrationStyles.tabLabel,
-                step === index ? registrationStyles.activeTabText : null,
+                registrationStyles.tab,
+                step === index ? registrationStyles.activeTab : null,
               ]}
             >
-              {name}
-            </Text>
-          </Pressable>
+              <Text style={[
+                registrationStyles.tabNumber,
+                step === index ? registrationStyles.activeTabText : null,
+              ]}>
+                {Object.keys(getRegistrationStepErrors(data, index, termsAccepted)).length === 0 ? '✓' : index + 1}
+              </Text>
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.8}
+                style={[
+                  registrationStyles.tabLabel,
+                  step === index ? registrationStyles.activeTabText : null,
+                ]}
+              >
+                {translateText(label)}
+              </Text>
+            </Pressable>
+          </TabTrigger>
         ))}
       </View>
       <Card style={registrationStyles.formCard}>
         {step === 0 ? (
           <>
             <View style={registrationStyles.sectionIntro}>
-              <Text style={registrationStyles.formTitle}>Cuéntanos sobre ti</Text>
-              <Text style={registrationStyles.formSubtitle}>Usaremos esta información para verificar tu identidad.</Text>
+              <Text style={registrationStyles.formTitle}>{t("Cuéntanos sobre ti")}</Text>
+              <Text style={registrationStyles.formSubtitle}>{t("Usaremos esta información para verificar tu identidad.")}</Text>
             </View>
-            {photo('profilePhoto', 'Foto de perfil')}
-            {section('fullName', 'Nombre completo', {
+            {photo('profilePhoto', t("Foto de perfil"))}
+            {section('fullName', t("Nombre completo"), {
               maxLength: 50,
-              helperText: 'De 1 a 50 caracteres; solo letras y espacios.',
+              helperText: t("De 1 a 50 caracteres; solo letras y espacios."),
             })}
-            {section('idNumber', 'Documento de identidad', {
+            {section('idNumber', t("Documento de identidad"), {
               keyboardType: 'numeric',
               maxLength: 10,
-              helperText: 'De 6 a 10 dígitos numéricos, sin puntos ni espacios.',
+              helperText: t("De 6 a 10 dígitos numéricos, sin puntos ni espacios."),
             })}
-            {section('phone', 'Número de celular', {
+            {section('phone', t("Número de celular"), {
               keyboardType: 'phone-pad',
               maxLength: 10,
-              helperText: 'Exactamente 10 dígitos, sin indicativo ni espacios.',
+              helperText: t("Exactamente 10 dígitos, sin indicativo ni espacios."),
             })}
-            {dateFieldControl('birthDate', 'Fecha de nacimiento', 'Debes tener 18 años o más.')}
-            {dropdown('gender', 'Género', ['Femenino', 'Masculino', 'Otro'], 'Selecciona una opción.')}
-            {section('email', 'Correo electrónico', {
+            {dateFieldControl('birthDate', t("Fecha de nacimiento"), t("Debes tener 18 años o más."))}
+            {dropdown('gender', t("Género"), ['Femenino', 'Masculino', 'Otro'], t("Selecciona una opción."))}
+            {section('email', t("Correo electrónico"), {
               keyboardType: 'email-address',
               maxLength: 254,
               autoCapitalize: 'none',
-              helperText: 'Máximo 254 caracteres; escribe una dirección de correo válida.',
+              helperText: t("Máximo 254 caracteres; escribe una dirección de correo válida."),
             })}
-            {section('password', 'Contraseña', {
+            {section('password', t("Contraseña"), {
               maxLength: 72,
               secureTextEntry: true,
               autoCapitalize: 'none',
-              helperText: 'De 10 a 72 caracteres; incluye al menos una letra y un número.',
+              helperText: t("De 10 a 72 caracteres; incluye al menos una letra y un número."),
             })}
-            {dropdown('language', 'Idioma', ['Español', 'Inglés'], 'Selecciona el idioma de la aplicación.')}
+            {dropdown('language', t("Idioma"), ['Español', 'Inglés'], t("Selecciona el idioma de la aplicación."))}
           </>
         ) : null}
         {step === 1 ? (
           <>
             <View style={registrationStyles.sectionIntro}>
-              <Text style={registrationStyles.formTitle}>Registra tu vehículo</Text>
-              <Text style={registrationStyles.formSubtitle}>Elige una categoría disponible para los viajes.</Text>
+              <Text style={registrationStyles.formTitle}>{t("Registra tu vehículo")}</Text>
+              <Text style={registrationStyles.formSubtitle}>{t("Elige una categoría disponible para los viajes.")}</Text>
             </View>
-            {dropdown('category', 'Categoría', ['Económico', 'XL', 'Premium'], 'Selecciona la categoría de servicio del vehículo.')}
-            {section('plate', 'Placa', {
+            {dropdown('category', t("Categoría"), ['Económico', 'XL', 'Premium'], t("Selecciona la categoría de servicio del vehículo."))}
+            {section('plate', t("Placa"), {
               upper: true,
               maxLength: 6,
-              helperText: '6 caracteres: 3 letras y 3 números (ABC123). Se convierte a mayúsculas.',
+              helperText: t("6 caracteres: 3 letras y 3 números (ABC123). Se convierte a mayúsculas."),
             })}
-            {section('make', 'Marca', { maxLength: 30, helperText: 'De 1 a 30 caracteres.' })}
-            {section('model', 'Modelo', { maxLength: 30, helperText: 'De 1 a 30 caracteres.' })}
-            {section('year', 'Año', {
+            {section('make', t("Marca"), { maxLength: 30, helperText: t("De 1 a 30 caracteres.") })}
+            {section('model', t("Modelo"), { maxLength: 30, helperText: t("De 1 a 30 caracteres.") })}
+            {section('year', t("Año"), {
               keyboardType: 'numeric',
               maxLength: 4,
-              helperText: `4 dígitos; desde 1950 hasta ${new Date().getFullYear()}.`,
+              helperText: t('4 dígitos; desde 1950 hasta {year}.', { year: new Date().getFullYear() }),
             })}
-            {dropdown('color', 'Color', ['Blanco', 'Negro', 'Gris', 'Rojo', 'Azul'], 'Selecciona el color del vehículo.')}
-            {section('capacity', 'Capacidad de pasajeros', {
+            {dropdown('color', t("Color"), ['Blanco', 'Negro', 'Gris', 'Rojo', 'Azul'], t("Selecciona el color del vehículo."))}
+            {section('capacity', t("Capacidad de pasajeros"), {
               keyboardType: 'numeric',
               maxLength: 2,
               helperText: data.category === 'XL'
-                ? 'De 6 a 20 pasajeros para categoría XL.'
-                : 'De 1 a 20 pasajeros.',
+                ? t("De 6 a 20 pasajeros para categoría XL.")
+                : t("De 1 a 20 pasajeros."),
             })}
-            {photo('vehiclePhoto', 'Foto del vehículo con la placa visible')}
+            {photo('vehiclePhoto', t("Foto del vehículo con la placa visible"))}
           </>
         ) : null}
         {step === 2 ? (
           <>
             <View style={registrationStyles.sectionIntro}>
-              <Text style={registrationStyles.formTitle}>Documentos y pagos</Text>
-              <Text style={registrationStyles.formSubtitle}>Las fotos deben ser legibles y las fechas estar vigentes.</Text>
+              <Text style={registrationStyles.formTitle}>{t("Documentos y pagos")}</Text>
+              <Text style={registrationStyles.formSubtitle}>{t("Las fotos deben ser legibles y las fechas estar vigentes.")}</Text>
             </View>
-            {section('licenseNumber', 'Número de licencia', {
+            {section('licenseNumber', t("Número de licencia"), {
               maxLength: 40,
-              helperText: 'De 1 a 40 caracteres; escríbelo como aparece en la licencia.',
+              helperText: t("De 1 a 40 caracteres; escríbelo como aparece en la licencia."),
             })}
-            {photo('licensePhoto', 'Foto de licencia de conducción')}
-            {dateFieldControl('licenseExpiry', 'Vencimiento de licencia', 'Selecciona una fecha posterior a hoy.')}
-            {photo('soatPhoto', 'Foto del SOAT')}
-            {dateFieldControl('soatExpiry', 'Vencimiento del SOAT', 'Selecciona una fecha posterior a hoy.')}
+            {photo('licensePhoto', t("Foto de licencia de conducción"))}
+            {dateFieldControl('licenseExpiry', t("Vencimiento de licencia"), t("Selecciona una fecha posterior a hoy."))}
+            {photo('soatPhoto', t("Foto del SOAT"))}
+            {dateFieldControl('soatExpiry', t("Vencimiento del SOAT"), t("Selecciona una fecha posterior a hoy."))}
             {data.year && Number(data.year) <= new Date().getFullYear() - 6 ? (
               <>
                 <Text style={registrationStyles.helperText}>
-                  Obligatoria para vehículos modelo {new Date().getFullYear() - 6} o anteriores.
+                  {t('Obligatoria para vehículos modelo {year} o anteriores.', { year: new Date().getFullYear() - 6 })}
                 </Text>
-                {photo('revisionPhoto', 'Foto de revisión técnico-mecánica')}
-                {dateFieldControl('revisionExpiry', 'Vencimiento de revisión', 'Selecciona una fecha posterior a hoy.')}
+                {photo('revisionPhoto', t("Foto de revisión técnico-mecánica"))}
+                {dateFieldControl('revisionExpiry', t("Vencimiento de revisión"), t("Selecciona una fecha posterior a hoy."))}
               </>
             ) : null}
-            {section('mercadoPagoEmail', 'Correo de cuenta Mercado Pago', {
+            {section('mercadoPagoEmail', t("Correo de cuenta Mercado Pago"), {
               keyboardType: 'email-address',
               maxLength: 254,
               autoCapitalize: 'none',
-              helperText: 'Máximo 254 caracteres; debe ser un correo válido asociado a Mercado Pago.',
+              helperText: t("Máximo 254 caracteres; debe ser un correo válido asociado a Mercado Pago."),
             })}
             <Pressable
               accessibilityRole="checkbox"
@@ -545,27 +519,27 @@ export function DriverRegistrationScreen() {
                 {termsAccepted ? <Text style={registrationStyles.checkmark}>✓</Text> : null}
               </View>
               <Text style={registrationStyles.termsText}>
-                Acepto los términos y autorizo una comisión del {commissionRate} % por viaje.
+                {t('Acepto los términos y autorizo una comisión del {rate} % por viaje.', { rate: formatNumber(commissionRate) })}
               </Text>
             </Pressable>
             {fieldErrors.termsAccepted ? (
-              <Text style={registrationStyles.error}>{fieldErrors.termsAccepted}</Text>
+              <Text style={registrationStyles.error}>{translateText(fieldErrors.termsAccepted)}</Text>
             ) : null}
             <Text style={registrationStyles.paymentHint}>
-              Solo guardamos el correo de Mercado Pago. No solicitamos datos de tarjetas ni cuentas bancarias.
+              {t("Solo guardamos el correo de Mercado Pago. No solicitamos datos de tarjetas ni cuentas bancarias.")}
             </Text>
           </>
         ) : null}
       </Card>
-      {message ? <Card><Text style={commonStyles.errorText}>{message}</Text></Card> : null}
+      {message ? <Card><Text style={commonStyles.errorText}>{translateText(message)}</Text></Card> : null}
       <View style={registrationStyles.navigation}>
         {step > 0 ? (
           <View style={registrationStyles.navigationButton}>
             <Button
-              title="Anterior"
+              title={t("Anterior")}
               variant="secondary"
               onPress={() => {
-                setStep((current) => current - 1);
+                setStep(step - 1);
                 setOpenDropdown(null);
               }}
             />
@@ -576,12 +550,12 @@ export function DriverRegistrationScreen() {
             ? registrationStyles.navigationSoloButton
             : registrationStyles.navigationButton}
           >
-            <Button title="Continuar" onPress={next} />
+            <Button title={t("Continuar")} onPress={next} />
           </View>
         ) : (
           <View style={registrationStyles.navigationButton}>
             <Button
-              title={submitting ? 'Enviando registro…' : 'Enviar registro'}
+              title={submitting ? t("Enviando registro…") : t("Enviar registro")}
               onPress={() => void submit()}
               disabled={submitting || !registrationReady}
             />
@@ -590,10 +564,10 @@ export function DriverRegistrationScreen() {
       </View>
       <Label muted>
         {step === 2 && !registrationReady
-          ? 'Completa y corrige los campos obligatorios para habilitar el envío.'
+          ? t("Completa y corrige los campos obligatorios para habilitar el envío.")
           : profile
-            ? 'Ya tienes una sesión iniciada.'
-            : 'Tus datos se envían al backend de forma segura. Tu cuenta quedará pendiente de aprobación.'}
+            ? t("Ya tienes una sesión iniciada.")
+            : t("Tus datos se envían al backend de forma segura. Tu cuenta quedará pendiente de aprobación.")}
       </Label>
       {Platform.OS === 'ios' ? (
         <Modal
@@ -605,7 +579,7 @@ export function DriverRegistrationScreen() {
           <View style={registrationStyles.dateModalBackdrop}>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Cerrar selector de fecha"
+              accessibilityLabel={t("Cerrar selector de fecha")}
               style={registrationStyles.dateModalDismiss}
               onPress={() => setDateField(null)}
             />
@@ -618,15 +592,15 @@ export function DriverRegistrationScreen() {
               <View style={registrationStyles.dateModalHeader}>
                 <Text style={registrationStyles.dateModalTitle}>
                   {dateField === 'birthDate'
-                    ? 'Fecha de nacimiento'
+                    ? t("Fecha de nacimiento")
                     : dateField === 'licenseExpiry'
-                      ? 'Vencimiento de licencia'
+                      ? t("Vencimiento de licencia")
                       : dateField === 'soatExpiry'
-                        ? 'Vencimiento del SOAT'
-                        : 'Vencimiento de revisión'}
+                        ? t("Vencimiento del SOAT")
+                        : t("Vencimiento de revisión")}
                 </Text>
                 <Button
-                  title="Listo"
+                  title={t("Listo")}
                   onPress={() => {
                     if (dateField) update(dateField, formatDateInput(pendingDate));
                     setDateField(null);
@@ -639,7 +613,7 @@ export function DriverRegistrationScreen() {
                   value={pendingDate}
                   mode="date"
                   display="spinner"
-                  locale="es-CO"
+                  locale={locale}
                   maximumDate={dateField === 'birthDate'
                     ? new Date(new Date().getFullYear() - 18, new Date().getMonth(), new Date().getDate())
                     : undefined}

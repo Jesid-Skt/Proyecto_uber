@@ -1,34 +1,32 @@
 import {
   DynamicColorIOS,
   Platform,
-  PlatformColor,
   StyleSheet,
   type ColorValue,
 } from 'react-native';
 
-function adaptiveColor(light: string, dark: string, androidResource: string): ColorValue {
+function adaptiveColor(light: string, dark: string): ColorValue {
   if (Platform.OS === 'ios') return DynamicColorIOS({ light, dark });
-  if (Platform.OS === 'android') return PlatformColor(androidResource);
   return light;
 }
 
 export const colors = {
-  background: adaptiveColor('#F4F6F5', '#101713', '?android:attr/colorBackground'),
-  surface: adaptiveColor('#FFFFFF', '#19221D', '?android:attr/colorBackgroundFloating'),
-  ink: adaptiveColor('#17211C', '#F3F6F4', '?android:attr/textColorPrimary'),
-  muted: adaptiveColor('#64716A', '#AAB6AE', '?android:attr/textColorSecondary'),
+  background: adaptiveColor('#F4F6F5', '#101713'),
+  surface: adaptiveColor('#FFFFFF', '#19221D'),
+  ink: adaptiveColor('#17211C', '#F3F6F4'),
+  muted: adaptiveColor('#64716A', '#AAB6AE'),
   accent: '#087F5B',
-  accentLight: adaptiveColor('#E5F3EC', '#20382D', '?android:attr/colorBackgroundFloating'),
-  danger: adaptiveColor('#B42318', '#FF8A80', '?android:attr/colorError'),
-  line: adaptiveColor('#E0E6E2', '#303B35', '?android:attr/colorControlNormal'),
+  accentLight: adaptiveColor('#E5F3EC', '#20382D'),
+  danger: adaptiveColor('#B42318', '#FF8A80'),
+  line: adaptiveColor('#E0E6E2', '#303B35'),
   navy: '#10251C',
   onAccent: '#FFFFFF',
   onDarkSurface: '#DCE8E1',
-  placeholder: adaptiveColor('#89948E', '#89958E', '?android:attr/textColorHint'),
-  photoSurface: adaptiveColor('#F8FAF9', '#1D2923', '?android:attr/colorBackgroundFloating'),
-  photoBorder: adaptiveColor('#C7D3CC', '#526057', '?android:attr/colorControlNormal'),
-  chipSurface: adaptiveColor('#E9EEEB', '#29352E', '?android:attr/colorBackgroundFloating'),
-  checkboxBorder: adaptiveColor('#A8B5AD', '#7F8D84', '?android:attr/colorControlNormal'),
+  placeholder: adaptiveColor('#89948E', '#89958E'),
+  photoSurface: adaptiveColor('#F8FAF9', '#1D2923'),
+  photoBorder: adaptiveColor('#C7D3CC', '#526057'),
+  chipSurface: adaptiveColor('#E9EEEB', '#29352E'),
+  checkboxBorder: adaptiveColor('#A8B5AD', '#7F8D84'),
 };
 
 export const spacing = {

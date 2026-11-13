@@ -11,9 +11,10 @@ Los perfiles de conductor, los datos de vehículo y la metadata de documentos se
 
 - Node.js 22.14 o superior y npm.
 - Un clúster MongoDB Atlas de tipo replica set, usuario de base de datos y la dirección IP del desarrollador permitida en **Network Access**. MongoDB Change Streams requiere replica set.
-- Proyecto Google Cloud con Maps SDK, Directions API y Distance Matrix API habilitadas; usa claves separadas y restringidas para móvil y servidor.
+- MapLibre React Native v11 para el mapa móvil, con estilo OpenFreeMap predeterminado; no requiere una clave Google Maps móvil.
+- Para rutas y métricas del backend: `ORS_API_KEY` de OpenRouteService o `GOOGLE_MAPS_SERVER_API_KEY` restringida a Directions API y Distance Matrix API. En producción se debe configurar al menos uno; ORS se usa cuando Google no está configurado, no como reintento automático ante fallos de Google.
 - Proyecto Firebase con Cloud Messaging (FCM) y credenciales de servidor configuradas mediante Application Default Credentials.
-- Un build de desarrollo nativo de Expo para FCM; Expo Go no incluye React Native Firebase.
+- Un build de desarrollo nativo recompilado para MapLibre y FCM; Expo Go no incluye estos módulos nativos.
 
 ## Inicio rápido para probar la app
 
@@ -28,10 +29,10 @@ En la segunda, inicia Expo en la red local:
 
 ```powershell
 cd .\frontend
-npm run start -- --lan
+npm run start -- --dev-client --lan
 ```
 
-Escanea el QR con el teléfono conectado a la misma Wi-Fi y abre la app en Expo Go o en el development build de UberClone. `frontend/.env` debe apuntar a la IP LAN del computador en `EXPO_PUBLIC_API_URL` (no uses `localhost` en un teléfono físico). Al abrir Inicio, la app solicita permiso de ubicación y centra el mapa en la ubicación real del dispositivo; si todavía no está disponible, centra inicialmente la vista en Medellín. Comparte ubicación con el backend únicamente cuando el conductor esté conectado. Expo Go sirve para probar la interfaz y la ubicación en primer plano; las notificaciones FCM y el seguimiento en segundo plano requieren un build nativo de desarrollo.
+Instala primero un development build de UberClone que incluya MapLibre v11 (sección 3). Conecta el teléfono a la misma Wi-Fi y abre el QR en ese cliente. `frontend/.env` debe apuntar a la IP LAN del computador en `EXPO_PUBLIC_API_URL` (no uses `localhost` en un teléfono físico). Al abrir Inicio, la app solicita permiso de ubicación y centra el mapa en la ubicación real del dispositivo; si todavía no está disponible, centra inicialmente la vista en Medellín. Mientras Inicio está visible, solo un conductor aprobado y disponible comparte ubicación con el backend. Al salir de Inicio o desconectarse, el seguimiento se detiene según la especificación. Expo Go no permite validar MapLibre ni FCM.
 
 ## 1. Configurar MongoDB Atlas
 
@@ -64,12 +65,12 @@ Escanea el QR con el teléfono conectado a la misma Wi-Fi y abre la app en Expo 
 
    - `GOOGLE_MAPS_SERVER_API_KEY`: clave restringida a Directions API y Distance Matrix API. Solo se usa en el backend; cuando no se configura, `ORS_API_KEY` proporciona tanto las métricas de distancia y duración como la ruta para la navegación.
    - `FIREBASE_PROJECT_ID` y `GOOGLE_APPLICATION_CREDENTIALS`: proyecto y ruta local, fuera del repositorio, a las credenciales de Firebase Admin. En Azure/GCP puedes usar identidad administrada/credenciales del entorno.
-   - `ORS_API_KEY`: alternativa para calcular distancia, duración y ruta de conducción si Google Maps no está configurado.
+   - `ORS_API_KEY`: alternativa para calcular distancia, duración y ruta de conducción si Google Maps no está configurado. Esta selección depende de la configuración: no es un reintento automático con ORS cuando una petición a Google falla. Ambas claves permanecen exclusivamente en el backend.
    - `MERCADO_PAGO_ACCESS_TOKEN`: token `TEST-` de la aplicación de Mercado Pago.
    - `MERCADO_PAGO_WEBHOOK_SECRET`: clave secreta configurada para firmar los webhooks.
    - `BACKEND_PUBLIC_URL`: URL HTTPS pública del backend para que Mercado Pago pueda enviar webhooks. En desarrollo usa un túnel HTTPS; `localhost` no es accesible desde Mercado Pago.
 
-   El backend valida que el token, el secreto de webhook y la URL pública estén configurados juntos, y acepta únicamente tokens con prefijo `TEST-` o `APP_USR-`. Usa siempre credenciales `TEST-` para las pruebas de este proyecto; `APP_USR-` corresponde a credenciales de producción. En producción también exige Google Maps y Firebase. No copies credenciales a `.env.example`, al frontend ni a Git.
+   El backend valida que el token, el secreto de webhook y la URL pública estén configurados juntos, y acepta únicamente tokens con prefijo `TEST-` o `APP_USR-`. Usa siempre credenciales `TEST-` para las pruebas de este proyecto; `APP_USR-` corresponde a credenciales de producción. En producción exige al menos un proveedor de rutas (Google Maps u ORS) y Firebase. No copies credenciales a `.env.example`, al frontend ni a Git.
 
    En el panel de Mercado Pago, registra `https://<dominio-publico>/api/payments/mercadopago/webhook` como URL de notificaciones y habilita eventos de pagos.
 
@@ -112,13 +113,13 @@ La app crea el índice único de correo, documento y placa al iniciar el backend
 - `POST /api/trip-requests/:tripId/checkout`: crea o devuelve el enlace de Checkout Pro para un viaje en Mercado Pago después de que el conductor lo acepte. Requiere la clave privada de publicación y devuelve `checkoutUrl`; solo lo debe consumir un servidor de la experiencia del pasajero.
 - `GET /api/trip-requests/:tripId/payment`: consulta el estado de pago desde ese servidor, también con la clave privada.
 - `POST /api/payments/mercadopago/webhook`: recibe notificaciones, valida la firma y confirma el estado consultando el pago directamente a Mercado Pago.
-- `POST /api/drivers/me/trips/:tripId/route`: devuelve una ruta de Google Directions (OpenRouteService opcional); admite `pickup`, `destination` y `history`.
+- `POST /api/drivers/me/trips/:tripId/route`: devuelve una ruta de Google Directions si hay clave del servidor; en su ausencia usa OpenRouteService. Admite `pickup`, `destination` y `history`. MapLibre dibuja la geometría recibida; no calcula las rutas ni las tarifas.
 
 El cuerpo de `POST /api/trip-requests` contiene `driverId`, `origin` y `destination` (cada punto con `lat`, `lng` y `address`), `category` (`economy`, `xl` o `premium`) y `paymentMethod` (`cash` o `mercadopago`). No acepta distancia, duración ni tarifa enviados por el cliente: Google Distance Matrix calcula las métricas cuando está configurado; de lo contrario, OpenRouteService las obtiene con una ruta de conducción si `ORS_API_KEY` está disponible. La función compartida `shared/pricing.ts` determina tarifa, comisión y ganancia neta. El cálculo se repite al aceptar el viaje. Si ambos proveedores faltan, la API responde `503` sin inventar distancia ni tarifa.
 
 Para viajes con Mercado Pago, el conductor abre el checkout desde la pantalla de cobro. El webhook firmado confirma los pagos automáticamente; si la notificación no llega, **Consultar estado del pago** invoca el endpoint autenticado de sincronización, que consulta Mercado Pago y valida el pago antes de actualizar la base de datos. Regresar del checkout no confirma el pago. Stripe no está integrado; Mercado Pago y efectivo son los medios implementados.
 
-Mientras está disponible, el cliente envía la ubicación cada pocos segundos al backend. MongoDB Change Streams propaga ubicación y transiciones por Socket.IO; FCM avisa nuevas solicitudes cuando la app está en segundo plano. La app también conserva consulta periódica como respaldo. Google Directions calcula la ruta al iniciar cada etapa del viaje, no en cada actualización GPS; Google Maps puede abrirse para navegación externa en vivo.
+Cuando el conductor aprobado está disponible, el cliente comparte su ubicación con el backend únicamente mientras Inicio está visible; al salir de Inicio o desconectarse, detiene el seguimiento. MongoDB Change Streams propaga ubicación y transiciones por Socket.IO; FCM avisa nuevas solicitudes cuando la app está en segundo plano, independientemente del GPS. La app también conserva consulta periódica como respaldo. El proveedor del backend (Google Directions u OpenRouteService) calcula la ruta al iniciar cada etapa del viaje, no en cada actualización GPS. Abrir Google Maps para navegación externa es independiente del mapa MapLibre integrado y no requiere una clave Google móvil en esta app.
 
 La aplicación de pasajero no está incluida. La ruta protegida `POST /api/trip-requests` es el punto de integración para publicar solicitudes desde ese cliente.
 
@@ -142,11 +143,11 @@ Después de cambiar el estado, pulsa **Actualizar estado** en Inicio. Mientras l
    notepad frontend\.env
    ```
 2. Configura `EXPO_PUBLIC_API_URL`. En un teléfono físico usa la IP LAN del computador que ejecuta el backend, no `localhost`, por ejemplo `http://192.168.1.10:4000`. El emulador puede requerir una URL diferente.
-3. Configura `GOOGLE_MAPS_API_KEY` con una clave restringida por aplicación para los SDK nativos de Maps. Sin esta clave, Android no puede mostrar correctamente las teselas del mapa.
+3. Configura opcionalmente `EXPO_PUBLIC_MAP_STYLE_URL`. Si está ausente o vacío, el mapa usa `https://tiles.openfreemap.org/styles/liberty` (OpenFreeMap). Debe ser una URL de estilo compatible con MapLibre; es pública en el bundle, no un lugar para secretos. No configures `GOOGLE_MAPS_API_KEY`: el mapa móvil ya no usa el SDK Google Maps. Los archivos Firebase del siguiente paso sí siguen siendo necesarios para FCM.
 4. Para FCM, descarga `google-services.json` y `GoogleService-Info.plist` de tu proyecto Firebase y colócalos en `frontend/`. También puedes indicar sus rutas relativas en `GOOGLE_SERVICES_JSON` y `GOOGLE_SERVICES_PLIST`. Estos archivos locales se excluyen de Git.
 5. En Android 13 o posterior, acepta el permiso de notificaciones que solicita la app. Si fue denegado anteriormente, habilítalo en Ajustes del dispositivo y vuelve a abrir UberClone. Después de cambiar permisos nativos en `app.json`, sincroniza y recompila el cliente con `npx expo prebuild --platform android` y `npx expo run:android`.
 6. Asegúrate de que el firewall permite conexiones al puerto 4000 desde el dispositivo.
-7. Para compartir la ubicación mientras la app está minimizada, acepta el permiso de ubicación en segundo plano. En iOS selecciona **Siempre** (o cambia el permiso en Ajustes > UberClone > Ubicación); en Android permite la ubicación en segundo plano y mantén activa la notificación de servicio que muestra el sistema. El seguimiento solo funciona mientras el conductor aprobado está disponible. Hay que instalar un build nativo nuevo para que los permisos y modos de fondo configurados en `app.json` surtan efecto; compila iOS en macOS o con EAS. Para generar un build de desarrollo iOS desde Windows, inicia sesión en EAS con `npx eas-cli login` y ejecuta `npx eas-cli build --profile development --platform ios`. EAS solicitará vincular el proyecto y las credenciales de Apple necesarias para instalar el build en un iPhone. iOS puede suspender el seguimiento si el usuario fuerza el cierre de la app desde el selector.
+7. El seguimiento GPS usa únicamente el permiso de ubicación **mientras se usa la app** y se mantiene activo solo en Inicio mientras el conductor está disponible. No se solicita ubicación **Siempre** ni se comparte GPS en segundo plano: la especificación exige detener el seguimiento al salir de Inicio. FCM en segundo plano es independiente y requiere su propia configuración nativa. Para generar un build de desarrollo iOS desde Windows, inicia sesión en EAS con `npx eas-cli login` y ejecuta `npx eas-cli build --profile development --platform ios`. EAS solicitará vincular el proyecto y las credenciales de Apple necesarias para instalar el build en un iPhone.
 
 En desarrollo, la API acepta orígenes Expo Go (`exp://`) y web (`http://`) desde direcciones IP privadas en los puertos `8081` y `19006`. En producción, configura los orígenes exactos en `FRONTEND_ORIGINS`.
 
@@ -158,16 +159,18 @@ npx expo prebuild --platform android
 npx expo run:android
 ```
 
-React Native Firebase no funciona en Expo Go. Instala y ejecuta la app con el cliente nativo de desarrollo (`npx expo run:android`); después inicia Metro con `npx expo start` y abre el cliente UberClone, no Expo Go. En Android 13+ permite las notificaciones del sistema; en iOS acepta los permisos de notificaciones y ubicación **Siempre**, y configura una clave APNs en Firebase. Vuelve a compilar el cliente si cambian las dependencias nativas o la configuración. Para iOS, compila en macOS o con Expo Build/EAS. El registro del conductor organiza datos personales, vehículo y documentos/pagos en tres pestañas; valida los campos en línea y solo permite enviar el formulario completo. Acepta fotos JPEG/PNG/WebP (máximo 5 MB por imagen) desde cámara o galería. Las cuentas nuevas quedan `pending`. Solo se guarda el correo de Mercado Pago para pagos; no se solicitan ni guardan números de tarjetas o cuentas bancarias en AsyncStorage. El conductor también puede iniciar/cerrar sesión, editar perfil, vehículo y documentos, cambiar idioma, seguir viajes, pagar y consultar ganancias e historial.
+MapLibre y React Native Firebase requieren el cliente nativo de desarrollo. La migración a MapLibre v11 exige recompilar e instalar ese cliente: reiniciar Metro o actualizar solo JavaScript no agrega el módulo nativo. Instala y ejecuta la app con `npx expo run:android`; después inicia Metro con `npx expo start --dev-client` y abre UberClone. En Android 13+ permite las notificaciones del sistema; en iOS acepta los permisos de notificaciones y configura una clave APNs en Firebase. La ubicación solo necesita permiso mientras se usa la app. Vuelve a compilar el cliente si cambian las dependencias nativas o la configuración. Para iOS, compila en macOS o con Expo Build/EAS. Consulta la [guía oficial de MapLibre](https://maplibre.org/maplibre-react-native/docs/setup/getting-started/) y la [referencia Expo SDK 58](https://docs.expo.dev/versions/v58.0.0/).
 
-El Drawer contiene Inicio, Historial, Ganancias, Viaje activo, Perfil y Configuración. El registro conserva tres pestañas accesibles dentro del formulario (sin un navigator Expo Router Tabs separado) y el flujo de viaje usa Stack.
+El registro del conductor organiza datos personales, vehículo y documentos/pagos en tres pestañas; valida los campos en línea y solo permite enviar el formulario completo. Acepta fotos JPEG/PNG/WebP (máximo 5 MB por imagen) desde cámara o galería. Las cuentas nuevas quedan `pending`. Solo se guarda el correo de Mercado Pago para pagos; no se solicitan ni guardan números de tarjetas o cuentas bancarias en AsyncStorage. El conductor también puede iniciar/cerrar sesión, editar perfil, vehículo y documentos, cambiar idioma, seguir viajes, pagar y consultar ganancias e historial.
 
-Para probar la interfaz en un iPhone sin compilar un cliente nativo, instala Expo Go y ejecuta `npm run start:go -- --lan` dentro de `frontend`; conecta el iPhone a la misma red Wi-Fi, escanea el QR con la cámara y abre el enlace en Expo Go. En Expo Go se omite la inicialización de Firebase Messaging para evitar cargar un módulo nativo que ese cliente no incluye. Los viajes siguen usando Socket.IO y consulta periódica mientras la aplicación está abierta, pero las notificaciones FCM y el seguimiento GPS en segundo plano requieren un development build nativo. Si la red local impide conectarse, ejecuta `npm run start:go -- --tunnel`.
+El Drawer contiene Inicio, Historial, Ganancias, Viaje activo, Perfil y Configuración. El registro usa un navigator real `Tabs` de `expo-router/ui`: `/register` (datos personales), `/register/vehicle` y `/register/documents`. Un contexto sobre las pestañas conserva campos, fotos, términos, errores y estado de envío al cambiar de ruta; el borrador no se persiste al salir del registro. El flujo de viaje usa Stack.
+
+Para probar en iPhone desde Windows, genera e instala el development build iOS con Expo Build/EAS y ejecuta `npm run start -- --dev-client --lan`. Si la red local impide conectarse, usa `npm run start -- --dev-client --tunnel`. El script legado `start:go` no sustituye este build para la aplicación migrada.
 
 ## Persistencia y límites de esta fase
 
-- Los perfiles, documentos, disponibilidad, última ubicación, tokens FCM, solicitudes, transiciones y estados de pago se persisten en MongoDB. La sincronización Socket.IO usa Change Streams; configura un replica set.
-- La app usa Distance Matrix al publicar y aceptar cada solicitud, y Directions al comenzar cada etapa; no consulta estas APIs con cada movimiento del GPS. La tarifa y la comisión provienen de `shared/pricing.ts`.
+- Los perfiles, documentos, disponibilidad, última ubicación, tokens FCM, solicitudes, transiciones y estados de pago se persisten en MongoDB. La sincronización Socket.IO usa Change Streams; configura un replica set. El GPS se consulta y comparte solo desde Inicio mientras está visible y el conductor disponible; al salir de la pantalla o desconectarse, se limpian las suscripciones.
+- El backend usa Distance Matrix/Directions o el fallback por configuración de OpenRouteService al publicar y aceptar solicitudes y comenzar etapas; no consulta estas APIs con cada movimiento del GPS. La tarifa y la comisión provienen de `shared/pricing.ts`. OpenFreeMap suministra el estilo y las teselas, no las métricas de cobro.
 - El cliente actual es la versión del conductor. La experiencia del pasajero que publica solicitudes todavía se debe integrar con el endpoint protegido de publicación; por eso el modelo actual de `trips` no almacena `passengerId`.
 - Imágenes se guardan en GridFS; las claves de MongoDB permanecen solo en `backend/.env`.
 - Los datos de tarjetas o cuentas bancarias no se guardan. Mercado Pago procesa el checkout y el backend almacena solo sus identificadores y estado.
@@ -192,4 +195,4 @@ Los tests del frontend cubren validación por pestaña, documentos, fechas, edad
 
 ## Uso de IA
 
-La bitácora está en [docs/AI_LOG.md](./docs/AI_LOG.md), con exportación a PDF en [docs/AI_LOG.pdf](./docs/AI_LOG.pdf). Completa el nombre del integrante y el hash final del commit.
+La bitácora está en [docs/AI_LOG.md](./docs/AI_LOG.md). El [checklist de entrega](./docs/DELIVERY_CHECKLIST.md) separa verificaciones automáticas de evidencias manuales pendientes. La actualización y revisión de los PDF corresponde a la integración final; un PDF anterior no acredita estos cambios. El video lo grabará el usuario después de terminar la migración y las correcciones. Completa autoría y hash únicamente con datos reales al integrar; no hay una revisión de PR acreditada en esta actualización.

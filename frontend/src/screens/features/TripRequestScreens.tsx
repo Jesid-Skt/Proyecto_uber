@@ -1,3 +1,4 @@
+import { useLocalization } from '../../localization/useLocalization';
 // AI-assisted: see docs/AI_LOG.md #7.
 import { Redirect, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -12,7 +13,6 @@ import Animated, {
 import { SlideToConfirmButton } from '../../components/SlideToConfirmButton';
 import { tripPalette } from '../../components/trip-flow-theme';
 import { Button, Card, Page } from '../../components/ui';
-import { formatCop } from '../../config/pricing';
 import { useDriver } from '../../context/DriverContext';
 import { useTripRequests } from '../../hooks/useTripRequests';
 import { paymentMethodLabel } from '../shared/formatters';
@@ -27,17 +27,18 @@ export function TripFlowScreen() {
 }
 
 export function CurrentTripMenuScreen() {
+  const { t } = useLocalization();
   const { activeTrip } = useDriver();
   const router = useRouter();
   if (!activeTrip) {
     return (
       <Page backgroundColor={tripPalette.background}>
         <View style={styles.heading}>
-          <Text style={styles.title}>No hay un viaje activo</Text>
-          <Text style={styles.subtitle}>Cuando aceptes una solicitud, podrás continuar aquí el flujo del viaje.</Text>
+          <Text style={styles.title}>{t("No hay un viaje activo")}</Text>
+          <Text style={styles.subtitle}>{t("Cuando aceptes una solicitud, podrás continuar aquí el flujo del viaje.")}</Text>
         </View>
         <Button
-          title="Volver al inicio"
+          title={t("Volver al inicio")}
           onPress={() => router.replace('/home')}
           style={styles.rejectButton}
           textStyle={styles.buttonLabel}
@@ -52,6 +53,7 @@ export function CurrentTripMenuScreen() {
 }
 
 export function TripRequestScreen() {
+  const { t, translateText, formatCurrency, formatNumber } = useLocalization();
   const router = useRouter();
   const { activeRequest, acceptRequest, rejectRequest } = useDriver();
   const { secondsRemaining, expirationError } = useTripRequests();
@@ -81,7 +83,7 @@ export function TripRequestScreen() {
       await acceptRequest();
       router.replace('/trip-pickup');
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'No se pudo aceptar la solicitud.');
+      setError(requestError instanceof Error ? requestError.message : "No se pudo aceptar la solicitud.");
     } finally {
       setLoading(false);
     }
@@ -93,7 +95,7 @@ export function TripRequestScreen() {
       await rejectRequest();
       router.replace('/home');
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'No se pudo rechazar la solicitud.');
+      setError(requestError instanceof Error ? requestError.message : "No se pudo rechazar la solicitud.");
     } finally {
       setLoading(false);
     }
@@ -103,15 +105,15 @@ export function TripRequestScreen() {
     return (
       <Page backgroundColor={tripPalette.background}>
         <View style={styles.heading}>
-          <Text style={styles.title}>Solicitud no disponible</Text>
-          <Text style={styles.subtitle}>Pudo vencer o ya fue respondida.</Text>
+          <Text style={styles.title}>{t("Solicitud no disponible")}</Text>
+          <Text style={styles.subtitle}>{t("Pudo vencer o ya fue respondida.")}</Text>
         </View>
         {expirationError ? (
           <Card style={styles.card}>
-            <Text style={styles.error}>{expirationError}</Text>
+            <Text style={styles.error}>{translateText(expirationError)}</Text>
           </Card>
         ) : null}
-        <Button title="Volver al inicio" onPress={() => router.replace('/home')} />
+        <Button title={t("Volver al inicio")} onPress={() => router.replace('/home')} />
       </Page>
     );
   }
@@ -119,15 +121,15 @@ export function TripRequestScreen() {
   return (
     <Page backgroundColor={tripPalette.background}>
       <View style={styles.heading}>
-        <Text style={styles.eyebrow}>NUEVO VIAJE</Text>
-        <Text style={styles.title}>Nueva solicitud</Text>
-        <Text style={styles.subtitle}>Revisa los detalles y responde antes de que termine el tiempo.</Text>
+        <Text style={styles.eyebrow}>{t("NUEVO VIAJE")}</Text>
+        <Text style={styles.title}>{t("Nueva solicitud")}</Text>
+        <Text style={styles.subtitle}>{t("Revisa los detalles y responde antes de que termine el tiempo.")}</Text>
       </View>
       <Animated.View entering={FadeInDown.duration(350)}>
         <Card style={styles.card}>
           <View style={styles.countdownHeader}>
             <View>
-              <Text style={styles.meta}>TIEMPO PARA RESPONDER</Text>
+              <Text style={styles.meta}>{t("TIEMPO PARA RESPONDER")}</Text>
               <Text style={styles.countdown}>00:{String(secondsRemaining).padStart(2, '0')}</Text>
             </View>
             <Ionicons
@@ -160,11 +162,11 @@ export function TripRequestScreen() {
             </View>
             <View style={styles.routeAddresses}>
               <View style={styles.addressBlock}>
-                <Text style={styles.meta}>RECOGIDA</Text>
+                <Text style={styles.meta}>{t("RECOGIDA")}</Text>
                 <Text style={styles.address}>{activeRequest.origin.address}</Text>
               </View>
               <View style={styles.addressBlock}>
-                <Text style={styles.meta}>DESTINO</Text>
+                <Text style={styles.meta}>{t("DESTINO")}</Text>
                 <Text style={styles.address}>{activeRequest.destination.address}</Text>
               </View>
             </View>
@@ -172,19 +174,19 @@ export function TripRequestScreen() {
 
           <View style={styles.tripMeta}>
             <Text style={styles.metaValue}>
-              {activeRequest.distanceKm} km · {activeRequest.durationMin} min
+              {formatNumber(activeRequest.distanceKm)} km · {formatNumber(activeRequest.durationMin)} min
             </Text>
-            <Text style={styles.metaValue}>{activeRequest.category}</Text>
-            <Text style={styles.metaValue}>{paymentMethodLabel(activeRequest.paymentMethod)}</Text>
+            <Text style={styles.metaValue}>{translateText(activeRequest.category)}</Text>
+            <Text style={styles.metaValue}>{translateText(paymentMethodLabel(activeRequest.paymentMethod))}</Text>
           </View>
           <View style={styles.fareRow}>
-            <Text style={styles.body}>Tarifa estimada</Text>
-            <Text style={styles.body}>{formatCop(activeRequest.fare)}</Text>
+            <Text style={styles.body}>{t("Tarifa estimada")}</Text>
+            <Text style={styles.body}>{formatCurrency(activeRequest.fare)}</Text>
           </View>
           <View style={styles.earningsBadge}>
             <View>
-              <Text style={styles.earningsLabel}>GANANCIA NETA ESTIMADA</Text>
-              <Text style={styles.earningsValue}>{formatCop(activeRequest.driverEarnings)}</Text>
+              <Text style={styles.earningsLabel}>{t("GANANCIA NETA ESTIMADA")}</Text>
+              <Text style={styles.earningsValue}>{formatCurrency(activeRequest.driverEarnings)}</Text>
             </View>
             <Ionicons name="wallet-outline" size={24} color={tripPalette.accent} />
           </View>
@@ -192,12 +194,12 @@ export function TripRequestScreen() {
       </Animated.View>
       {error ? (
         <Card style={styles.card}>
-          <Text style={styles.error}>{error}</Text>
+          <Text style={styles.error}>{translateText(error)}</Text>
         </Card>
       ) : null}
       <View style={styles.actions}>
         <Button
-          title={loading ? 'Procesando…' : 'Rechazar'}
+          title={loading ? t("Procesando…") : t("Rechazar")}
           variant="secondary"
           onPress={() => void reject()}
           disabled={loading}
@@ -205,13 +207,13 @@ export function TripRequestScreen() {
         />
         <View style={styles.acceptButton}>
           <SlideToConfirmButton
-            title={loading ? 'Procesando…' : 'Desliza para aceptar'}
+            title={loading ? t("Procesando…") : t("Desliza para aceptar")}
             onConfirm={() => void accept()}
             disabled={loading || secondsRemaining === 0}
           />
         </View>
       </View>
-      <Text style={styles.footnote}>La solicitud se confirma con el servidor antes de cambiar de pantalla.</Text>
+      <Text style={styles.footnote}>{t("La solicitud se confirma con el servidor antes de cambiar de pantalla.")}</Text>
     </Page>
   );
 }

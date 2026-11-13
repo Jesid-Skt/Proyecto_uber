@@ -1,3 +1,4 @@
+import { useLocalization } from '../../localization/useLocalization';
 // AI-assisted: see docs/AI_LOG.md #1, #3, #7, and #10.
 import { Redirect } from 'expo-router';
 import { Drawer } from 'expo-router/drawer';
@@ -8,6 +9,7 @@ import { tripPalette } from '../../components/trip-flow-theme';
 import { useDriver } from '../../context/DriverContext';
 
 export default function DrawerLayout() {
+  const { t } = useLocalization();
   const { profile, sessionLoading } = useDriver();
   if (sessionLoading) return null;
   if (!profile) return <Redirect href="/login" />;
@@ -29,15 +31,15 @@ export default function DrawerLayout() {
       drawerLabelStyle: { fontWeight: '600' },
       sceneStyle: { backgroundColor: tripPalette.background },
     })}>
-      <Drawer.Screen name="home" options={{ title: 'Conducir', drawerLabel: 'Inicio' }} />
-      <Drawer.Screen name="history" options={{ title: 'Historial', drawerLabel: 'Historial' }} />
-      <Drawer.Screen name="earnings" options={{ title: 'Ganancias', drawerLabel: 'Ganancias' }} />
+      <Drawer.Screen name="home" options={{ title: t("Conducir"), drawerLabel: t("Inicio") }} />
+      <Drawer.Screen name="history" options={{ title: t("Historial"), drawerLabel: t("Historial") }} />
+      <Drawer.Screen name="earnings" options={{ title: t("Ganancias"), drawerLabel: t("Ganancias") }} />
       <Drawer.Screen
         name="current-trip"
-        options={{ title: 'Viaje activo', drawerLabel: 'Viaje activo' }}
+        options={{ title: t("Viaje activo"), drawerLabel: t("Viaje activo") }}
       />
-      <Drawer.Screen name="profile" options={{ title: 'Perfil y ajustes', drawerLabel: 'Perfil' }} />
-      <Drawer.Screen name="settings" options={{ title: 'Configuración', drawerLabel: 'Configuración' }} />
+      <Drawer.Screen name="profile" options={{ title: t("Perfil y ajustes"), drawerLabel: t("Perfil") }} />
+      <Drawer.Screen name="settings" options={{ title: t("Configuración"), drawerLabel: t("Configuración") }} />
     </Drawer>
   );
 }

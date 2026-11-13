@@ -123,6 +123,7 @@ export function Field({
       </Text>
       <TextInput
         {...props}
+        accessibilityLabel={props.accessibilityLabel ?? label}
         placeholderTextColor={colors.placeholder}
         style={[styles.input, props.style]}
       />

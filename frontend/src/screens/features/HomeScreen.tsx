@@ -1,14 +1,16 @@
+import { useLocalization } from '../../localization/useLocalization';
 // AI-assisted: see docs/AI_LOG.md #5.
 import { useIsFocused, usePathname, useRouter } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Switch, Text, View } from 'react-native';
-import MapView, { Marker } from 'react-native-maps';
+import MapView, { Marker } from '../../components/DriverMap';
 import { Button, Card, colors, commonStyles, Label, Page, PageHeading } from '../../components/ui';
 import { useDriver } from '../../context/DriverContext';
 import { useDriverLocation } from '../../hooks/useDriverLocation';
 import { useTripRequests } from '../../hooks/useTripRequests';
 
 export function HomeScreen() {
+  const { t, translateText } = useLocalization();
   const {
     available,
     profile,
@@ -29,25 +31,35 @@ export function HomeScreen() {
   const onPermissionDenied = useCallback(() => {
     if (!available) return;
     void setAvailable(false).catch((error: unknown) => {
-      setLocationError(error instanceof Error ? error.message : 'No se pudo desconectar.');
+      setLocationError(error instanceof Error ? error.message : "No se pudo desconectar.");
     });
   }, [available, setAvailable]);
   const reportLocation = useCallback(async (location: { lat: number; lng: number }) => {
     await updateLocation(location);
     setLocationError(null);
   }, [updateLocation]);
-  const { coords, mapRegion, error: trackingError } = useDriverLocation(
-    isFocused,
+  const {
+    coords,
+    mapRegion,
+    error: trackingError,
+    retry: retryLocation,
+  } = useDriverLocation(
+    isFocused && available,
     onPermissionDenied,
     available ? reportLocation : undefined,
   );
   const { secondsRemaining, expirationError } = useTripRequests();
   const accountApproved = profile?.approvalStatus === 'approved';
+  const requestBounds = useMemo(() => activeRequest ? [
+    ...(coords ? [{ latitude: coords.latitude, longitude: coords.longitude }] : []),
+    { latitude: activeRequest.origin.lat, longitude: activeRequest.origin.lng },
+    { latitude: activeRequest.destination.lat, longitude: activeRequest.destination.lng },
+  ] : undefined, [activeRequest, coords]);
   const approvalLabel = profile?.approvalStatus === 'approved'
-    ? 'Cuenta aprobada'
+    ? t("Cuenta aprobada")
     : profile?.approvalStatus === 'rejected'
-      ? 'Solicitud rechazada'
-      : 'Pendiente de aprobación';
+      ? t("Solicitud rechazada")
+      : t("Pendiente de aprobación");
 
   useEffect(() => {
     if (!available || !isFocused) return;
@@ -60,7 +72,7 @@ export function HomeScreen() {
         if (active) setLocationError(null);
       } catch (error) {
         if (active) {
-          setLocationError(error instanceof Error ? error.message : 'No se pudieron consultar solicitudes.');
+          setLocationError(error instanceof Error ? error.message : "No se pudieron consultar solicitudes.");
         }
       } finally {
         requestCheckRunning.current = false;
@@ -86,7 +98,7 @@ export function HomeScreen() {
       setLocationError(null);
       await setAvailable(value);
     } catch (error) {
-      setLocationError(error instanceof Error ? error.message : 'No se pudo cambiar la disponibilidad.');
+      setLocationError(error instanceof Error ? error.message : "No se pudo cambiar la disponibilidad.");
     } finally {
       setAvailabilityLoading(false);
     }
@@ -99,7 +111,7 @@ export function HomeScreen() {
       await refreshProfile();
     } catch (error) {
       setApprovalRefreshError(
-        error instanceof Error ? error.message : 'No se pudo actualizar el estado de aprobación.',
+        error instanceof Error ? error.message : "No se pudo actualizar el estado de aprobación.",
       );
     } finally {
       setApprovalRefreshing(false);
@@ -109,34 +121,39 @@ export function HomeScreen() {
   return (
     <Page>
       <View style={commonStyles.spread}>
-        <PageHeading title="Hola, conductor" subtitle={profile?.fullName ?? ''} />
+        <PageHeading title={t("Hola, conductor")} subtitle={profile?.fullName ?? ''} />
         <View style={commonStyles.centered}>
           <Text style={available ? commonStyles.statusActive : commonStyles.statusInactive}>
-            {available ? 'DISPONIBLE' : 'DESCONECTADO'}
+            {available ? t("DISPONIBLE") : t("DESCONECTADO")}
           </Text>
           <Switch
-            accessibilityLabel="Disponibilidad del conductor"
+            accessibilityLabel={t("Disponibilidad del conductor")}
             value={available}
             onValueChange={(value) => void onAvailabilityChange(value)}
             disabled={!accountApproved || availabilityLoading}
             trackColor={{ true: colors.accent }}
           />
-          {availabilityLoading ? <Label muted>Actualizando…</Label> : null}
+          {availabilityLoading ? <Label muted>{t("Actualizando…")}</Label> : null}
         </View>
       </View>
       <Card style={commonStyles.mapCard}>
-        <MapView style={commonStyles.homeMap} region={mapRegion} showsUserLocation={Boolean(coords)}>
-          {coords ? <Marker coordinate={mapRegion} title="Tu ubicación" /> : null}
+        <MapView
+          style={commonStyles.homeMap}
+          region={mapRegion}
+          showsUserLocation={Boolean(coords)}
+          fitCoordinates={requestBounds}
+        >
+          {coords ? <Marker coordinate={mapRegion} title={t("Tu ubicación")} /> : null}
           {activeRequest ? (
             <>
               <Marker
                 coordinate={{ latitude: activeRequest.origin.lat, longitude: activeRequest.origin.lng }}
-                title="Punto de recogida"
+                title={t("Punto de recogida")}
                 pinColor={colors.accent}
               />
               <Marker
                 coordinate={{ latitude: activeRequest.destination.lat, longitude: activeRequest.destination.lng }}
-                title="Destino"
+                title={t("Destino")}
                 pinColor={colors.navy}
               />
             </>
@@ -144,52 +161,66 @@ export function HomeScreen() {
         </MapView>
       </Card>
       <Label muted>
-        {coords ? 'Mostrando la ubicación de este dispositivo.' : 'Buscando la ubicación del dispositivo…'}
+        {!available
+          ? t("Conéctate para compartir tu ubicación.")
+          : coords
+            ? t("Mostrando la ubicación de este dispositivo.")
+            : t("Buscando la ubicación del dispositivo…")}
       </Label>
       <Card>
-        <Text style={commonStyles.sectionTitle}>Estado de cuenta</Text>
+        <Text style={commonStyles.sectionTitle}>{t("Estado de cuenta")}</Text>
         <Text style={profile?.approvalStatus === 'approved' ? commonStyles.statusActive : commonStyles.statusInactive}>
           {approvalLabel}
         </Text>
         <Label muted>
           {accountApproved
-            ? 'La disponibilidad se guarda en el servidor.'
+            ? t("La disponibilidad se guarda en el servidor.")
             : profile?.approvalStatus === 'rejected'
-              ? 'La cuenta debe estar aprobada para activar la disponibilidad.'
-              : 'Un administrador debe aprobar tu perfil para activar la disponibilidad.'}
+              ? t("La cuenta debe estar aprobada para activar la disponibilidad.")
+              : t("Un administrador debe aprobar tu perfil para activar la disponibilidad.")}
         </Label>
         {!accountApproved ? (
           <Button
-            title={approvalRefreshing ? 'Actualizando estado…' : 'Actualizar estado'}
+            title={approvalRefreshing ? t("Actualizando estado…") : t("Actualizar estado")}
             variant="secondary"
             onPress={() => void onRefreshApproval()}
             disabled={approvalRefreshing}
           />
         ) : null}
         {approvalRefreshError ? (
-          <Text style={commonStyles.errorCaption}>{approvalRefreshError}</Text>
+          <Text style={commonStyles.errorCaption}>{translateText(approvalRefreshError)}</Text>
         ) : null}
       </Card>
       {trackingError || locationError || expirationError ? (
         <Card>
-          <Text style={commonStyles.errorText}>{trackingError ?? locationError ?? expirationError}</Text>
+          <Text style={commonStyles.errorText}>{translateText(trackingError ?? locationError ?? expirationError ?? '')}</Text>
+          {trackingError || locationError ? (
+            <Button
+              title={t("Reintentar ubicación")}
+              variant="secondary"
+              onPress={() => {
+                if (available) retryLocation();
+                else void onAvailabilityChange(true);
+              }}
+            />
+          ) : null}
         </Card>
       ) : null}
       {!activeRequest ? (
         <Card>
-          <Text style={commonStyles.sectionTitle}>Solicitudes de viaje</Text>
-          <Label muted>{available ? 'Esperando solicitudes asignadas a tu cuenta…' : 'Conéctate para recibir solicitudes.'}</Label>
+          <Text style={commonStyles.sectionTitle}>{t("Solicitudes de viaje")}</Text>
+          <Label muted>{available ? t("Esperando solicitudes asignadas a tu cuenta…") : t("Conéctate para recibir solicitudes.")}</Label>
         </Card>
       ) : (
         <Card>
-          <Text style={commonStyles.sectionTitle}>Solicitud recibida</Text>
+          <Text style={commonStyles.sectionTitle}>{t("Solicitud recibida")}</Text>
           <Label>{activeRequest.origin.address} → {activeRequest.destination.address}</Label>
-          <Label>Tiempo para responder: {secondsRemaining} s</Label>
-          <Button title="Ver solicitud" onPress={() => router.push('/trip-request')} />
+          <Label>{t('Tiempo para responder: {seconds} s', { seconds: secondsRemaining })}</Label>
+          <Button title={t("Ver solicitud")} onPress={() => router.push('/trip-request')} />
         </Card>
       )}
       <Text style={commonStyles.mutedCentered}>
-        La tarifa y el estado de cada solicitud provienen del backend.
+        {t("La tarifa y el estado de cada solicitud provienen del backend.")}
       </Text>
     </Page>
   );

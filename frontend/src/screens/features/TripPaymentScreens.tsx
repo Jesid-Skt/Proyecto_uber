@@ -1,17 +1,18 @@
+import { useLocalization } from '../../localization/useLocalization';
 // AI-assisted: see docs/AI_LOG.md #8.
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Linking, StyleSheet, Text, View } from 'react-native';
-import MapView, { Marker, Polyline } from 'react-native-maps';
+import MapView, { Marker, Polyline } from '../../components/DriverMap';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Button, Card, colors, commonStyles, Label, Page, PageHeading } from '../../components/ui';
 import { tripPalette } from '../../components/trip-flow-theme';
-import { formatCop } from '../../config/pricing';
 import { useDriver } from '../../context/DriverContext';
 import type { Trip, TripRoute } from '../../types/domain';
-import { formatDate, paymentMethodLabel } from '../shared/formatters';
+import { paymentMethodLabel } from '../shared/formatters';
 
 export function TripPaymentScreen() {
+  const { t, translateText, formatCurrency, paymentStatusLabel } = useLocalization();
   const router = useRouter();
   const {
     activeTrip,
@@ -102,60 +103,53 @@ export function TripPaymentScreen() {
   return (
     <Page backgroundColor={tripPalette.background}>
       <View style={styles.heading}>
-        <Text style={styles.eyebrow}>RESUMEN DE PAGO</Text>
-        <Text style={styles.title}>Cobro del viaje</Text>
-        <Text style={styles.subtitle}>Confirma el pago según el método acordado.</Text>
+        <Text style={styles.eyebrow}>{t("RESUMEN DE PAGO")}</Text>
+        <Text style={styles.title}>{t("Cobro del viaje")}</Text>
+        <Text style={styles.subtitle}>{t("Confirma el pago según el método acordado.")}</Text>
       </View>
       <Animated.View entering={FadeInDown.duration(350)}>
         <Card style={styles.card}>
           <View style={styles.row}>
-            <Text style={styles.secondary}>Valor registrado</Text>
-            <Text style={styles.amount}>{formatCop(activeTrip.fare)}</Text>
+            <Text style={styles.secondary}>{t("Valor registrado")}</Text>
+            <Text style={styles.amount}>{formatCurrency(activeTrip.fare)}</Text>
           </View>
           <View style={styles.row}>
-            <Text style={styles.secondary}>Comisión</Text>
-            <Text style={styles.body}>{formatCop(activeTrip.commission)}</Text>
+            <Text style={styles.secondary}>{t("Comisión")}</Text>
+            <Text style={styles.body}>{formatCurrency(activeTrip.commission)}</Text>
           </View>
           <View style={styles.earnings}>
             <View>
-              <Text style={styles.earningsLabel}>GANANCIA NETA</Text>
-              <Text style={styles.earningsValue}>{formatCop(activeTrip.driverEarnings)}</Text>
+              <Text style={styles.earningsLabel}>{t("GANANCIA NETA")}</Text>
+              <Text style={styles.earningsValue}>{formatCurrency(activeTrip.driverEarnings)}</Text>
             </View>
             <Text style={styles.currencyMark}>$</Text>
           </View>
           <View style={styles.detailRow}>
-            <Text style={styles.secondary}>Método de pago</Text>
-            <Text style={styles.body}>{paymentMethodLabel(activeTrip.paymentMethod)}</Text>
+            <Text style={styles.secondary}>{t("Método de pago")}</Text>
+            <Text style={styles.body}>{translateText(paymentMethodLabel(activeTrip.paymentMethod))}</Text>
           </View>
           <View style={styles.detailRow}>
-            <Text style={styles.secondary}>Estado del pago</Text>
+            <Text style={styles.secondary}>{t("Estado del pago")}</Text>
             <Text style={styles.body}>
-              {{
-                pending: 'Pendiente',
-                approved: 'Aprobado por Mercado Pago',
-                rejected: 'Rechazado',
-                refunded: 'Reembolsado',
-                charged_back: 'Contracargo',
-                cash: 'Efectivo recibido',
-              }[activeTrip.paymentStatus]}
+              {paymentStatusLabel(activeTrip.paymentStatus)}
             </Text>
           </View>
           {activeTrip.tip > 0 ? (
             <View style={styles.detailRow}>
-              <Text style={styles.secondary}>Propina</Text>
-              <Text style={styles.body}>{formatCop(activeTrip.tip)}</Text>
+              <Text style={styles.secondary}>{t("Propina")}</Text>
+              <Text style={styles.body}>{formatCurrency(activeTrip.tip)}</Text>
             </View>
           ) : null}
         </Card>
       </Animated.View>
       {error ? (
         <Card style={styles.card}>
-          <Text style={styles.error}>{error}</Text>
+          <Text style={styles.error}>{translateText(error)}</Text>
         </Card>
       ) : null}
       {activeTrip.paymentMethod === 'cash' ? (
         <Button
-          title={loading ? 'Confirmando…' : 'Confirmar efectivo recibido'}
+          title={loading ? t("Confirmando…") : t("Confirmar efectivo recibido")}
           onPress={() => void confirmCash()}
           disabled={loading}
           style={styles.actionButton}
@@ -165,24 +159,24 @@ export function TripPaymentScreen() {
         <Animated.View entering={FadeInDown.delay(100).duration(350)}>
         <Card style={styles.card}>
           <Text style={styles.body}>
-            Completa el checkout de prueba de Mercado Pago en el navegador. El backend confirmará el pago mediante una notificación firmada.
+            {t("Completa el checkout de prueba de Mercado Pago en el navegador. El backend confirmará el pago mediante una notificación firmada.")}
           </Text>
           <Button
-            title={loading ? 'Abriendo checkout…' : 'Abrir checkout de Mercado Pago'}
+            title={loading ? t("Abriendo checkout…") : t("Abrir checkout de Mercado Pago")}
             onPress={() => void openMercadoPagoCheckout()}
             disabled={loading || activeTrip.paymentStatus === 'approved'}
             style={styles.actionButton}
             textStyle={styles.actionButtonText}
           />
           <Text style={styles.secondary}>
-            {refreshing ? 'Consultando el estado del pago…' : 'La pantalla se actualizará automáticamente cuando el pago sea confirmado.'}
+            {refreshing ? t("Consultando el estado del pago…") : t("La pantalla se actualizará automáticamente cuando el pago sea confirmado.")}
           </Text>
           {activeTrip.paymentStatus === 'rejected' ? (
-            <Text style={styles.secondary}>El pago fue rechazado. El pasajero debe intentar nuevamente desde su flujo de pago.</Text>
+            <Text style={styles.secondary}>{t("El pago fue rechazado. El pasajero debe intentar nuevamente desde su flujo de pago.")}</Text>
           ) : null}
           {refreshing ? null : (
             <Button
-              title={loading ? 'Consultando Mercado Pago…' : 'Consultar estado del pago'}
+              title={loading ? t("Consultando Mercado Pago…") : t("Consultar estado del pago")}
               variant="secondary"
               onPress={() => void syncPayment()}
               disabled={loading}
@@ -245,13 +239,14 @@ const styles = StyleSheet.create({
 });
 
 export function TripSummaryScreen() {
+  const { t, translateText, formatCurrency, formatNumber, paymentStatusLabel } = useLocalization();
   const router = useRouter();
   const { activeTrip } = useDriver();
   if (!activeTrip) {
     return (
       <Page>
-        <PageHeading title="No hay un resumen disponible." subtitle="Consulta el historial para ver viajes anteriores." />
-        <Button title="Ver historial" onPress={() => router.replace('/history')} />
+        <PageHeading title={t("No hay un resumen disponible.")} subtitle={t("Consulta el historial para ver viajes anteriores.")} />
+        <Button title={t("Ver historial")} onPress={() => router.replace('/history')} />
       </Page>
     );
   }
@@ -263,37 +258,38 @@ export function TripSummaryScreen() {
       <Page>
         <PageHeading
           title={activeTrip.paymentStatus === 'refunded' || activeTrip.paymentStatus === 'charged_back'
-            ? 'El pago fue reembolsado o disputado.'
-            : 'El pago aún no está confirmado.'}
-          subtitle="El resumen solo se considera pagado cuando el backend confirma el pago."
+            ? t("El pago fue reembolsado o disputado.")
+            : t("El pago aún no está confirmado.")}
+          subtitle={t("El resumen solo se considera pagado cuando el backend confirma el pago.")}
         />
         {activeTrip.paymentStatus === 'pending' || activeTrip.paymentStatus === 'rejected' ? (
-          <Button title="Volver al cobro" onPress={() => router.replace('/trip-payment')} />
+          <Button title={t("Volver al cobro")} onPress={() => router.replace('/trip-payment')} />
         ) : null}
       </Page>
     );
   }
   return (
     <Page>
-      <PageHeading title="Viaje finalizado" subtitle="El pago y el viaje quedaron confirmados por el servidor." />
+      <PageHeading title={t("Viaje finalizado")} subtitle={t("El pago y el viaje quedaron confirmados por el servidor.")} />
       <Card>
-        <Label>Origen: {activeTrip.origin.address}</Label>
-        <Label>Destino: {activeTrip.destination.address}</Label>
-        <Label>{activeTrip.distanceKm} km · {activeTrip.durationMin} min · {activeTrip.category}</Label>
-        <View style={commonStyles.spread}><Label>Tarifa</Label><Text style={commonStyles.statValue}>{formatCop(activeTrip.fare)}</Text></View>
-        <View style={commonStyles.spread}><Label>Comisión</Label><Label>{formatCop(activeTrip.commission)}</Label></View>
-        <View style={commonStyles.spread}><Label>Propina</Label><Label>{formatCop(activeTrip.tip)}</Label></View>
-        <View style={commonStyles.spread}><Label>Ganancia neta</Label><Text style={commonStyles.emphasisValue}>{formatCop(activeTrip.driverEarnings)}</Text></View>
-        <Label>Método de pago: {paymentMethodLabel(activeTrip.paymentMethod)}</Label>
-        <Label>Estado del pago: {activeTrip.paymentStatus === 'cash' ? 'Efectivo recibido' : activeTrip.paymentStatus}</Label>
+        <Label>{t('Origen: {address}', { address: activeTrip.origin.address })}</Label>
+        <Label>{t('Destino: {address}', { address: activeTrip.destination.address })}</Label>
+        <Label>{formatNumber(activeTrip.distanceKm)} km · {formatNumber(activeTrip.durationMin)} min · {translateText(activeTrip.category)}</Label>
+        <View style={commonStyles.spread}><Label>{t("Tarifa")}</Label><Text style={commonStyles.statValue}>{formatCurrency(activeTrip.fare)}</Text></View>
+        <View style={commonStyles.spread}><Label>{t("Comisión")}</Label><Label>{formatCurrency(activeTrip.commission)}</Label></View>
+        <View style={commonStyles.spread}><Label>{t("Propina")}</Label><Label>{formatCurrency(activeTrip.tip)}</Label></View>
+        <View style={commonStyles.spread}><Label>{t("Ganancia neta")}</Label><Text style={commonStyles.emphasisValue}>{formatCurrency(activeTrip.driverEarnings)}</Text></View>
+        <Label>{t('Método de pago: {method}', { method: translateText(paymentMethodLabel(activeTrip.paymentMethod)) })}</Label>
+        <Label>{t('Estado del pago: {status}', { status: paymentStatusLabel(activeTrip.paymentStatus) })}</Label>
       </Card>
-      <Button title="Volver al inicio" onPress={() => router.replace('/home')} />
-      <Button title="Ver historial" variant="secondary" onPress={() => router.replace('/history')} />
+      <Button title={t("Volver al inicio")} onPress={() => router.replace('/home')} />
+      <Button title={t("Ver historial")} variant="secondary" onPress={() => router.replace('/history')} />
     </Page>
   );
 }
 
 export function TripDetailScreen() {
+  const { t, translateText, formatCurrency, formatNumber, formatDate } = useLocalization();
   const { trips, activeTrip, getTripDetails, getTripRoute } = useDriver();
   const { tripId } = useLocalSearchParams<{ tripId?: string }>();
   const [loadedTrip, setLoadedTrip] = useState<{ id: string; trip: Trip } | null>(null);
@@ -322,6 +318,32 @@ export function TripDetailScreen() {
     ?? (activeTrip?.id === tripId ? activeTrip : null);
   const [route, setRoute] = useState<TripRoute | null>(null);
   const [routeError, setRouteError] = useState<string | null>(null);
+  const originLatitude = trip?.origin.lat;
+  const originLongitude = trip?.origin.lng;
+  const destinationLatitude = trip?.destination.lat;
+  const destinationLongitude = trip?.destination.lng;
+  const endpoints = useMemo(() => {
+    if (
+      originLatitude === undefined
+      || originLongitude === undefined
+      || destinationLatitude === undefined
+      || destinationLongitude === undefined
+    ) return [];
+    return [
+      { latitude: originLatitude, longitude: originLongitude },
+      { latitude: destinationLatitude, longitude: destinationLongitude },
+    ];
+  }, [
+    destinationLatitude,
+    destinationLongitude,
+    originLatitude,
+    originLongitude,
+  ]);
+  const coordinates = route?.coordinates.length ? route.coordinates : endpoints;
+  const mapFitCoordinates = useMemo(
+    () => [...coordinates, ...endpoints.slice(1)],
+    [coordinates, endpoints],
+  );
   useEffect(() => {
     if (!trip || !['completed', 'paid'].includes(trip.status)) return;
     let active = true;
@@ -347,35 +369,31 @@ export function TripDetailScreen() {
   if (!trip) {
     return (
       <Page>
-        <PageHeading title={error && error.id === tripId ? 'No se pudo abrir el viaje.' : 'Cargando viaje…'} />
-        {error && error.id === tripId ? <Card><Label>{error.message}</Label></Card> : null}
+        <PageHeading title={error && error.id === tripId ? 'No se pudo abrir el viaje.' : t("Cargando viaje…")} />
+        {error && error.id === tripId ? <Card><Label>{translateText(error.message)}</Label></Card> : null}
       </Page>
     );
   }
-  const endpoints = [
-    { latitude: trip.origin.lat, longitude: trip.origin.lng },
-    { latitude: trip.destination.lat, longitude: trip.destination.lng },
-  ];
-  const coordinates = route?.coordinates ?? endpoints;
   return (
     <Page>
       <PageHeading title={`${trip.origin.address} → ${trip.destination.address}`} subtitle={formatDate(trip.createdAt, true)} />
       <MapView
         style={commonStyles.detailMap}
         initialRegion={{ ...coordinates[0], latitudeDelta: 0.06, longitudeDelta: 0.06 }}
+        fitCoordinates={mapFitCoordinates}
       >
         <Polyline coordinates={coordinates} strokeWidth={5} strokeColor={colors.accent} />
-        <Marker coordinate={coordinates[0]} title="Origen" />
-        <Marker coordinate={coordinates[1]} title="Destino" />
+        <Marker coordinate={coordinates[0]} title={t("Origen")} />
+        <Marker coordinate={endpoints[1]} title={t("Destino")} />
       </MapView>
       <Card>
-        {routeError ? <Label muted>{routeError}</Label> : null}
-        {!route && !routeError ? <Label muted>Calculando ruta del viaje…</Label> : null}
-        <Label>Distancia: {trip.distanceKm} km · Duración: {trip.durationMin} min</Label>
-        <Label>Categoría: {trip.category} · Pago: {paymentMethodLabel(trip.paymentMethod)}</Label>
-        <Label>Tarifa: {formatCop(trip.fare)} · Comisión: {formatCop(trip.commission)}</Label>
-        <Label>Propina: {formatCop(trip.tip)} · Ganancia: {formatCop(trip.driverEarnings)}</Label>
-        <Label>Calificación: {trip.rating ? `${trip.rating}/5` : 'Sin calificación'}</Label>
+        {routeError ? <Label muted>{translateText(routeError)}</Label> : null}
+        {!route && !routeError ? <Label muted>{t("Calculando ruta del viaje…")}</Label> : null}
+        <Label>{t('Distancia: {distance} km · Duración: {minutes} min', { distance: formatNumber(trip.distanceKm), minutes: formatNumber(trip.durationMin) })}</Label>
+        <Label>{t('Categoría: {category} · Pago: {method}', { category: translateText(trip.category), method: translateText(paymentMethodLabel(trip.paymentMethod)) })}</Label>
+        <Label>{t('Tarifa: {fare} · Comisión: {commission}', { fare: formatCurrency(trip.fare), commission: formatCurrency(trip.commission) })}</Label>
+        <Label>{t('Propina: {tip} · Ganancia: {earnings}', { tip: formatCurrency(trip.tip), earnings: formatCurrency(trip.driverEarnings) })}</Label>
+        <Label>{t('Calificación: {rating}', { rating: trip.rating ? `${formatNumber(trip.rating)}/5` : t('Sin calificación') })}</Label>
       </Card>
     </Page>
   );

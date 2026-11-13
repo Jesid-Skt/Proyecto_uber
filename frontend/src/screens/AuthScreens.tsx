@@ -1,3 +1,4 @@
+import { useLocalization } from '../localization/useLocalization';
 // AI-assisted: see docs/AI_LOG.md #1.
 import React, { useState } from 'react';
 import { Text } from 'react-native';
@@ -6,6 +7,7 @@ import { Button, Card, Field, Label, Page, PageHeading, commonStyles } from '../
 import { useDriver } from '../context/DriverContext';
 
 export function LoginScreen() {
+  const { t, translateText } = useLocalization();
   const { login, sessionError, retrySession } = useDriver();
   const router = useRouter();
   const [email, setEmail] = useState('');
@@ -20,7 +22,7 @@ export function LoginScreen() {
       await login(email.trim().toLowerCase(), password);
       router.replace('/home');
     } catch (loginError) {
-      setError(loginError instanceof Error ? loginError.message : 'No se pudo iniciar sesión.');
+      setError(loginError instanceof Error ? loginError.message : "No se pudo iniciar sesión.");
     } finally {
       setSubmitting(false);
     }
@@ -28,21 +30,21 @@ export function LoginScreen() {
 
   return (
     <Page>
-      <PageHeading title="UberClone Conductor" subtitle="Inicia sesión para consultar tu perfil guardado." />
+      <PageHeading title={t("UberClone Conductor")} subtitle={t("Inicia sesión para consultar tu perfil guardado.")} />
       {sessionError ? (
         <Card>
-          <Text style={commonStyles.errorText}>{sessionError}</Text>
-          <Button title="Reintentar conexión" variant="secondary" onPress={() => void retrySession()} />
+          <Text style={commonStyles.errorText}>{translateText(sessionError)}</Text>
+          <Button title={t("Reintentar conexión")} variant="secondary" onPress={() => void retrySession()} />
         </Card>
       ) : null}
-      {error ? <Card><Text style={commonStyles.errorText}>{error}</Text></Card> : null}
+      {error ? <Card><Text style={commonStyles.errorText}>{translateText(error)}</Text></Card> : null}
       <Card>
-        <Field label="Correo electrónico" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoComplete="email" />
-        <Field label="Contraseña" value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" autoComplete="password" />
-        <Button title={submitting ? 'Ingresando…' : 'Iniciar sesión'} onPress={() => void submit()} disabled={submitting || !email || !password} />
+        <Field label={t("Correo electrónico")} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoComplete="email" />
+        <Field label={t("Contraseña")} value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" autoComplete="password" />
+        <Button title={submitting ? t("Ingresando…") : t("Iniciar sesión")} onPress={() => void submit()} disabled={submitting || !email || !password} />
       </Card>
-      <Label muted>¿Aún no tienes cuenta? Completa el registro del conductor.</Label>
-      <Button title="Crear perfil de conductor" variant="secondary" onPress={() => router.push('/register')} />
+      <Label muted>{t("¿Aún no tienes cuenta? Completa el registro del conductor.")}</Label>
+      <Button title={t("Crear perfil de conductor")} variant="secondary" onPress={() => router.push('/register')} />
     </Page>
   );
 }
