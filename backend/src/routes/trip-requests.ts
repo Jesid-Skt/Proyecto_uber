@@ -9,7 +9,7 @@ import { HttpError } from '../utils/http-error.js';
 import { calculateTripFare, tripIdSchema, tripRequestSchema } from '../utils/trip-validation.js';
 import { serializeTrip } from '../services/trip-serializer.js';
 import { createMercadoPagoCheckout } from '../services/mercado-pago.js';
-import { getTripMetrics } from '../services/google-maps.js';
+import { getTripMetrics } from '../services/route-metrics.js';
 import { sendTripRequestNotification } from '../services/push-notifications.js';
 
 const router = Router();

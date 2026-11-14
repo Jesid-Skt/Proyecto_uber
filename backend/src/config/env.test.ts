@@ -14,7 +14,7 @@ const validDevelopmentEnv = {
   BACKEND_PUBLIC_URL: '',
 };
 
-test('production accepts ORS without Google and rejects missing routing providers', () => {
+test('production requires ORS for routing', () => {
   const production = {
     ...validDevelopmentEnv,
     NODE_ENV: 'production',

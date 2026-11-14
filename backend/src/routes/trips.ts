@@ -5,9 +5,8 @@ import { authenticate } from '../middleware/authenticate.js';
 import { Driver } from '../models/Driver.js';
 import { Trip } from '../models/Trip.js';
 import { serializeTrip } from '../services/trip-serializer.js';
-import { getDrivingRoute as getOpenRouteServiceRoute } from '../services/openrouteservice.js';
-import { getGoogleDrivingRoute, getTripMetrics } from '../services/google-maps.js';
-import { env } from '../config/env.js';
+import { getDrivingRoute } from '../services/openrouteservice.js';
+import { getTripMetrics } from '../services/route-metrics.js';
 import { calculateTripFare } from '../utils/trip-validation.js';
 import {
   createMercadoPagoCheckout,
@@ -255,9 +254,7 @@ router.post('/:tripId/route', async (request, response) => {
     from: { lat: routeOrigin.lat, lng: routeOrigin.lng },
     to: { lat: destination.lat, lng: destination.lng },
   };
-  const route = env.GOOGLE_MAPS_SERVER_API_KEY
-    ? await getGoogleDrivingRoute(routeInput)
-    : await getOpenRouteServiceRoute(routeInput);
+  const route = await getDrivingRoute(routeInput);
   response.json({ route });
 });
 

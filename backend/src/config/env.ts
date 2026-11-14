@@ -18,7 +18,6 @@ export const envSchema = z.object({
   MONGODB_URI: z.string().min(1, 'MONGODB_URI es obligatorio.'),
   JWT_SECRET: z.string().min(32, 'JWT_SECRET debe tener al menos 32 caracteres.'),
   TRIP_REQUEST_API_KEY: optionalSecret,
-  GOOGLE_MAPS_SERVER_API_KEY: optionalValue,
   ORS_API_KEY: optionalValue,
   FIREBASE_PROJECT_ID: optionalValue,
   GOOGLE_APPLICATION_CREDENTIALS: optionalValue,
@@ -44,11 +43,11 @@ export const envSchema = z.object({
       message: 'FIREBASE_PROJECT_ID es obligatorio en producción para las notificaciones FCM.',
     });
   }
-  if (value.NODE_ENV === 'production' && !value.GOOGLE_MAPS_SERVER_API_KEY && !value.ORS_API_KEY) {
+  if (value.NODE_ENV === 'production' && !value.ORS_API_KEY) {
     context.addIssue({
       code: 'custom',
-      path: ['GOOGLE_MAPS_SERVER_API_KEY'],
-      message: 'Configura GOOGLE_MAPS_SERVER_API_KEY u ORS_API_KEY para tarifas y navegación.',
+      path: ['ORS_API_KEY'],
+      message: 'Configura ORS_API_KEY para tarifas y navegación.',
     });
   }
   const mercadoPagoConfigured = Boolean(value.MERCADO_PAGO_ACCESS_TOKEN);

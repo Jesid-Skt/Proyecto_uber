@@ -1,12 +1,12 @@
 import { z } from 'zod';
 import { env } from '../config/env.js';
 import { HttpError } from '../utils/http-error.js';
-import type { DrivingRoute } from './google-maps.js';
+import type { DrivingRoute } from './route-types.js';
 
 const directionsResponseSchema = z.object({
   features: z.array(z.object({
     geometry: z.object({
-      coordinates: z.array(z.array(z.number()).min(2)).min(2),
+      coordinates: z.array(z.tuple([z.number().finite().min(-180).max(180), z.number().finite().min(-90).max(90)]).rest(z.number())).min(2),
     }),
     properties: z.object({
       summary: z.object({
@@ -17,7 +17,7 @@ const directionsResponseSchema = z.object({
   })).min(1),
 });
 
-export type { DrivingRoute } from './google-maps.js';
+export type { DrivingRoute } from './route-types.js';
 
 export function parseDrivingRouteResponse(responseBody: unknown): DrivingRoute {
   const parsed = directionsResponseSchema.safeParse(responseBody);
@@ -43,6 +43,16 @@ export async function getOpenRouteServiceRoute(input: {
     throw new HttpError(503, 'Configura ORS_API_KEY para usar OpenRouteService.');
   }
 
+  const validPoint = (point: { lat: number; lng: number }) =>
+    Number.isFinite(point.lat) && Number.isFinite(point.lng)
+    && Math.abs(point.lat) <= 90 && Math.abs(point.lng) <= 180;
+  if (!validPoint(input.from) || !validPoint(input.to)) {
+    throw new HttpError(400, 'Las coordenadas de la ruta no son válidas.');
+  }
+  if (input.from.lat === input.to.lat && input.from.lng === input.to.lng) {
+    throw new HttpError(422, 'El origen y el destino de la ruta son iguales. Verifica el GPS del conductor.');
+  }
+
   let response: Response;
   try {
     response = await fetch('https://api.openrouteservice.org/v2/directions/driving-car/geojson', {
@@ -65,8 +75,20 @@ export async function getOpenRouteServiceRoute(input: {
   }
 
   if (!response.ok) {
-    console.error('OpenRouteService rechazó la solicitud de ruta.', { status: response.status });
-    throw new HttpError(502, 'OpenRouteService no pudo calcular la ruta.');
+    // No registrar headers ni credenciales. Limitar el cuerpo por seguridad.
+    const errorBody = (await response.text().catch(() => '')).slice(0, 1500);
+    console.error('OpenRouteService rechazó la solicitud de ruta.', {
+      status: response.status,
+      from: input.from,
+      to: input.to,
+      body: errorBody,
+    });
+    throw new HttpError(
+      502,
+      response.status === 404
+        ? 'OpenRouteService no encontró una ruta para estas coordenadas.'
+        : 'OpenRouteService no pudo calcular la ruta.',
+    );
   }
 
   let responseBody: unknown;

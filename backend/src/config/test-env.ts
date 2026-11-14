@@ -4,7 +4,6 @@ process.env.PORT = '4000';
 process.env.MONGODB_URI = 'mongodb://localhost:27017/uber_clone_test';
 process.env.JWT_SECRET = 'test-only-jwt-secret-that-is-at-least-32-characters';
 process.env.TRIP_REQUEST_API_KEY = '';
-process.env.GOOGLE_MAPS_SERVER_API_KEY = '';
 process.env.ORS_API_KEY = 'test-openrouteservice-key';
 process.env.FIREBASE_PROJECT_ID = '';
 process.env.GOOGLE_APPLICATION_CREDENTIALS = '';
